@@ -1,3 +1,5 @@
+"use client";
+
 /**
  * Route-level error boundary.
  *

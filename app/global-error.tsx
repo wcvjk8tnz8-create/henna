@@ -1,3 +1,5 @@
+"use client";
+
 /**
  * Last-resort error boundary.
  *
