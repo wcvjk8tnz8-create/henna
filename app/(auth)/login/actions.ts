@@ -9,6 +9,12 @@ import { authenticateWithPassword, setPassword } from "@/lib/auth/password";
 import { issueEmailOtp, lastOtpForEmail, verifyEmailOtp } from "@/lib/auth/email-otp";
 import { ACCESS_COOKIE, createSession, type PrimaryAuthMethod } from "@/lib/auth/session";
 import { buildRequestContext } from "@/lib/request";
+import {
+  EmailSendError,
+  missingCredentials,
+  sendMail,
+  type ProviderConfig,
+} from "@/lib/email/provider";
 import { getInstanceSettings } from "@/lib/config/settings";
 import { isManagedAddress } from "@/lib/config/domains";
 import { consumeRateLimit, resetRateLimit, RATE_LIMIT_RULES } from "@/lib/rate-limit";
@@ -346,37 +352,39 @@ async function deliverCode(email: string, code: string, ttlSeconds: number): Pro
   );
   const [secrets, settings] = await Promise.all([getInstanceSecrets(), readSettings()]);
 
-  const apiKey = secrets.resendApiKey;
-  const from = settings.emailFrom;
-  if (!apiKey || !from) {
+  const provider = settings.emailProvider;
+  const from = settings.emailFrom ?? "";
+  const config: ProviderConfig = {
+    from,
+    resendApiKey: secrets.resendApiKey,
+    brevoApiKey: secrets.brevoApiKey,
+    mailjetApiKey: secrets.mailjetApiKey,
+    mailjetSecretKey: secrets.mailjetSecretKey,
+  };
+
+  if (missingCredentials(provider, config).length > 0) {
     if (await isBootstrapEligible(email)) {
       // Deliberate, narrowly scoped exception to "never log a code".
       //
-      // A freshly deployed instance has no Resend key, so it cannot send mail —
-      // and without a code nobody can sign in to configure one. Deadlock. The
-      // way out is to print the code to the server log exactly once, and only
-      // while the instance is still untouched.
+      // A freshly deployed instance has no mail provider configured, so it
+      // cannot send a code — and without a code nobody can sign in to
+      // configure one. Deadlock. The way out is to print the code to the
+      // server log exactly once, and only while the instance is untouched.
       //
       // Guarded by: the bootstrap address only, no user has ever verified an
       // email, and the code is still single-use, short-lived and rate limited.
       console.info(
         `[henna] BOOTSTRAP sign-in code for ${email}: ${code} ` +
           `(single use, expires in ${Math.round(ttlSeconds / 60)} minutes). ` +
-          `View with: npx wrangler tail`,
+          `Configure a mail provider in /admin/settings. View with: npx wrangler tail`,
       );
       return "bootstrap";
     }
     return "not-configured";
   }
 
-  await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${apiKey}`,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({
-      from,
+  try {
+    await sendMail(provider, config, {
       to: email,
       subject: "Your Henna sign-in code",
       text: [
@@ -385,9 +393,16 @@ async function deliverCode(email: string, code: string, ttlSeconds: number): Pro
         `It expires in ${Math.round(ttlSeconds / 60)} minutes and can only be used once.`,
         "If you did not request it, you can ignore this message.",
       ].join("\n"),
-    }),
-    cache: "no-store",
-  });
+    });
+  } catch (error) {
+    // The code itself must never reach a log line or an error message.
+    const detail =
+      error instanceof EmailSendError
+        ? `${error.provider}: ${error.message}`
+        : "the mail provider rejected the request";
+    console.error(`[henna] failed to send a sign-in code (${detail}); code not logged`);
+    return "not-configured";
+  }
 
   return "sent";
 }
@@ -397,8 +412,8 @@ async function deliverCode(email: string, code: string, ttlSeconds: number): Pro
  *
  * True only while the instance is genuinely untouched: nobody has completed a
  * sign-in, so no user row carries a verified email. As soon as the first
- * administrator signs in, this returns false for good and mail must be
- * configured properly.
+ * administrator signs in, this returns false for good and a mail provider must
+ * be configured properly.
  */
 async function isBootstrapEligible(email: string): Promise<boolean> {
   try {

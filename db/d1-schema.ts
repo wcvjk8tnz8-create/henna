@@ -163,9 +163,17 @@ CREATE TABLE IF NOT EXISTS instance_settings (
   github_client_secret_key_id TEXT,
   resend_api_key_enc TEXT,
   resend_api_key_key_id TEXT,
+  email_provider TEXT NOT NULL DEFAULT 'resend',
+  brevo_api_key_enc TEXT,
+  brevo_api_key_key_id TEXT,
+  mailjet_api_key_enc TEXT,
+  mailjet_api_key_key_id TEXT,
+  mailjet_secret_key_enc TEXT,
+  mailjet_secret_key_key_id TEXT,
   updated_by TEXT,
   updated_at INTEGER NOT NULL,
-  CONSTRAINT instance_settings_singleton CHECK (id = 1)
+  CONSTRAINT instance_settings_singleton CHECK (id = 1),
+  CONSTRAINT instance_settings_provider_valid CHECK (email_provider IN ('resend','brevo','mailjet'))
 );
 
 CREATE TABLE IF NOT EXISTS invites (

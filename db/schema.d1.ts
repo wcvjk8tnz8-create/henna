@@ -238,6 +238,13 @@ export const instanceSettings = sqliteTable("instance_settings", {
   githubClientSecretKeyId: text("github_client_secret_key_id"),
   resendApiKeyEnc: text("resend_api_key_enc"),
   resendApiKeyKeyId: text("resend_api_key_key_id"),
+  emailProvider: text("email_provider").notNull().default("resend"),
+  brevoApiKeyEnc: text("brevo_api_key_enc"),
+  brevoApiKeyKeyId: text("brevo_api_key_key_id"),
+  mailjetApiKeyEnc: text("mailjet_api_key_enc"),
+  mailjetApiKeyKeyId: text("mailjet_api_key_key_id"),
+  mailjetSecretKeyEnc: text("mailjet_secret_key_enc"),
+  mailjetSecretKeyKeyId: text("mailjet_secret_key_key_id"),
   updatedBy: text("updated_by"),
   updatedAt: integer("updated_at", { mode: "timestamp" })
     .notNull()

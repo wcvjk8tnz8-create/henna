@@ -85,6 +85,7 @@ export const jwtSecretSchema = z
 export const registrationModeSchema = z.enum(["closed", "invite-only", "allowlist"]);
 export const totpPolicySchema = z.enum(["optional", "required", "admin-only"]);
 export const authMethodSchema = z.enum(["password", "github", "email_otp"]);
+export const emailProviderSchema = z.enum(["resend", "brevo", "mailjet"]);
 
 export const rootEnvSchema = z.object({
   /** Mail domains this instance serves. JSON array. Root config. */
@@ -143,7 +144,22 @@ export const instanceSettingsSchema = z.object({
   githubAllowedUsers: z.array(z.string().max(64)).default([]),
   githubAllowedOrgs: z.array(z.string().max(64)).default([]),
 
+  /**
+   * Which service sends transactional mail (sign-in codes, password resets).
+   *
+   * Resend is the default but not universally usable: it refuses domains that
+   * appear on the Public Suffix List, so an instance serving `example.co.uk`
+   * or `project.github.io` cannot use it at all. Brevo and Mailjet accept such
+   * domains. See docs/self-hosting.md.
+   */
+  emailProvider: emailProviderSchema.default("resend"),
+
   resendApiKey: z.string().max(256).nullable().default(null),
+  /** Brevo: a single `xkeysib-…` key. */
+  brevoApiKey: z.string().max(256).nullable().default(null),
+  /** Mailjet: a key *and* a secret; both are required. */
+  mailjetApiKey: z.string().max(256).nullable().default(null),
+  mailjetSecretKey: z.string().max(256).nullable().default(null),
   emailFrom: emailSchema.nullable().default(null),
 
   registrationMode: registrationModeSchema.default("closed"),

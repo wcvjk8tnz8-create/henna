@@ -79,6 +79,18 @@ export async function getInstanceSettings(): Promise<InstanceSettings> {
 export interface InstanceSecrets {
   readonly githubClientSecret: string | null;
   readonly resendApiKey: string | null;
+  readonly brevoApiKey: string | null;
+  readonly mailjetApiKey: string | null;
+  readonly mailjetSecretKey: string | null;
+}
+
+/** Decrypt one column pair, tolerating an absent row or a rotated-out key. */
+function decryptPair(
+  keyring: ReturnType<typeof getKeyring>,
+  enc: string | null | undefined,
+  label: string,
+): string | null {
+  return enc ? keyring.decrypt(enc, label) : null;
 }
 
 /**
@@ -95,17 +107,25 @@ export async function getInstanceSecrets(): Promise<InstanceSecrets> {
     return {
       githubClientSecret: env.GITHUB_CLIENT_SECRET ?? null,
       resendApiKey: env.RESEND_API_KEY ?? null,
+      brevoApiKey: env.BREVO_API_KEY ?? null,
+      mailjetApiKey: env.MAILJET_API_KEY ?? null,
+      mailjetSecretKey: env.MAILJET_SECRET_KEY ?? null,
     };
   }
 
   const keyring = getKeyring();
-  const githubClientSecret = row.githubClientSecretEnc
-    ? keyring.decrypt(row.githubClientSecretEnc, "github_client_secret")
-    : null;
-  const resendApiKey = row.resendApiKeyEnc
-    ? keyring.decrypt(row.resendApiKeyEnc, "resend_api_key")
-    : null;
-  return { githubClientSecret, resendApiKey };
+  const githubClientSecret = decryptPair(
+    keyring,
+    row.githubClientSecretEnc,
+    "github_client_secret",
+  );
+  return {
+    githubClientSecret,
+    resendApiKey: decryptPair(keyring, row.resendApiKeyEnc, "resend_api_key"),
+    brevoApiKey: decryptPair(keyring, row.brevoApiKeyEnc, "brevo_api_key"),
+    mailjetApiKey: decryptPair(keyring, row.mailjetApiKeyEnc, "mailjet_api_key"),
+    mailjetSecretKey: decryptPair(keyring, row.mailjetSecretKeyEnc, "mailjet_secret_key"),
+  };
 }
 
 /** Settings that are safe to send to the browser (no secrets, ever). */
@@ -189,11 +209,44 @@ export async function updateInstanceSettings(
       secretPatch.resendApiKeyKeyId = keyring.activeKeyId;
     }
   }
+  if (input.brevoApiKey !== undefined) {
+    if (input.brevoApiKey === null) {
+      secretPatch.brevoApiKeyEnc = null;
+      secretPatch.brevoApiKeyKeyId = null;
+    } else {
+      secretPatch.brevoApiKeyEnc = keyring.encrypt(input.brevoApiKey, "brevo_api_key");
+      secretPatch.brevoApiKeyKeyId = keyring.activeKeyId;
+    }
+  }
+
+  if (input.mailjetApiKey !== undefined) {
+    if (input.mailjetApiKey === null) {
+      secretPatch.mailjetApiKeyEnc = null;
+      secretPatch.mailjetApiKeyKeyId = null;
+    } else {
+      secretPatch.mailjetApiKeyEnc = keyring.encrypt(input.mailjetApiKey, "mailjet_api_key");
+      secretPatch.mailjetApiKeyKeyId = keyring.activeKeyId;
+    }
+  }
+
+  if (input.mailjetSecretKey !== undefined) {
+    if (input.mailjetSecretKey === null) {
+      secretPatch.mailjetSecretKeyEnc = null;
+      secretPatch.mailjetSecretKeyKeyId = null;
+    } else {
+      secretPatch.mailjetSecretKeyEnc = keyring.encrypt(input.mailjetSecretKey, "mailjet_secret_key");
+      secretPatch.mailjetSecretKeyKeyId = keyring.activeKeyId;
+    }
+  }
+
 
   // Strip secrets out of the JSON payload before it is written.
   const payload: Record<string, unknown> = { ...next };
   delete payload.githubClientSecret;
   delete payload.resendApiKey;
+  delete payload.brevoApiKey;
+  delete payload.mailjetApiKey;
+  delete payload.mailjetSecretKey;
 
   const db = getDb();
   await db

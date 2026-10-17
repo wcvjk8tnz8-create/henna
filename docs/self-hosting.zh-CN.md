@@ -199,3 +199,40 @@ pg_restore --dbname=henna_restored henna-2026-01-01.dump
 3. 把恢复码存到与验证器不同的设备上。
 4. 打开 `/admin/settings` 设置注册模式。默认是 `closed`，这是安全的那个。
 5. 访问 `/api/health` —— 它会报告缺失的根配置，而不是直接崩溃。
+
+## 事务邮件：选择服务商
+
+Henna 只发两类邮件：登录验证码与密码重置。支持三家服务商，在 `/admin/settings` 里切换。
+
+| 服务商 | 需要的凭证 | 什么时候用 |
+| --- | --- | --- |
+| **Resend** | 一个 API Key | 默认。送达率最好、配置最简单 —— 但请看下面的限制。 |
+| **Brevo** | 一个 API Key（`xkeysib-…`） | 你的域名在公共后缀列表（PSL）上，或你偏好欧洲的服务商。 |
+| **Mailjet** | 一个 API Key **和**一个 Secret Key | 同 Brevo；Mailjet 用 HTTP Basic 认证，所以两个值都要。 |
+
+### 为什么要有 Brevo 和 Mailjet
+
+**Resend 拒绝添加列入公共后缀列表（PSL）的域名。** 如果你的邮件域名是其中之一 ——
+例如 `example.co.uk`、`project.github.io`，或任何可注册后缀是共享而非你独有的情况 ——
+Resend 不会接受，且没有绕过办法。服务这类域名的实例将连一个登录验证码都发不出去。
+
+Brevo 与 Mailjet 都接受 PSL 域名，这就是支持它们的全部理由。如果 Resend 对你的
+域名可用，用它就好。
+
+> 换服务商不等于修复送达率。无论选哪家，你都仍需要在该服务商处验证域名并配置
+> SPF 与 DKIM；落进垃圾箱的验证码，和根本没发出的验证码没区别。
+
+### 配置步骤
+
+1. `/admin/settings → Transactional mail`
+2. 选择服务商。
+3. 填入凭证。凭证以 AES-256-GCM 加密存进专用列，绝不返回给浏览器，也不会写进
+   JSON 设置块。
+4. 填写 **发件人** —— 该地址必须属于你在该服务商处已验证的域名。
+
+凭证也可以来自环境变量（`RESEND_API_KEY`、`BREVO_API_KEY`、`MAILJET_API_KEY`、
+`MAILJET_SECRET_KEY`），适合你更愿意把它们放在 Workers secrets 而不是数据库里的情况。
+
+切换服务商不会破坏任何东西：设置在下一次发送时生效；而配置不完整时，只有在实例
+尚无任何已验证用户的情况下才会回退到引导日志路径。
+

@@ -199,3 +199,47 @@ decryption fails loudly — by design, not by accident. Store dumps encrypted.
    `closed`, which is the safe one.
 5. Check `/api/health` — it reports missing root configuration instead of
    crashing.
+
+## Transactional mail: choosing a provider
+
+Henna sends only two kinds of mail: sign-in codes and password resets. Three
+providers are supported, and the choice is made in `/admin/settings`.
+
+| Provider | Credentials needed | Use when |
+| --- | --- | --- |
+| **Resend** | One API key | Default. Best deliverability and simplest setup — but see the caveat below. |
+| **Brevo** | One API key (`xkeysib-…`) | Your domain is on the Public Suffix List, or you prefer an EU-based sender. |
+| **Mailjet** | An API key **and** a secret key | Same as Brevo; Mailjet authenticates with HTTP Basic, so both values are required. |
+
+### Why Brevo and Mailjet exist
+
+**Resend refuses to add domains that appear on the Public Suffix List (PSL).**
+If your mail domain is one of them — `example.co.uk`, `project.github.io`, or
+anything else where the registrable suffix is shared rather than owned — Resend
+will not accept it, and there is no workaround. An instance serving such a
+domain would be unable to send a single sign-in code.
+
+Brevo and Mailjet both accept PSL domains, which is the entire reason they are
+supported. If Resend works for your domain, use it.
+
+> Adding a provider is not a deliverability fix. Whichever you pick, you still
+> need to verify the domain with that provider and configure its SPF and DKIM
+> records; a code that lands in spam is as good as one that never arrived.
+
+### Configuration
+
+1. `/admin/settings → Transactional mail`
+2. Pick the provider.
+3. Paste its credentials. They are AES-256-GCM encrypted in dedicated columns
+   and are never returned to the browser or written to the JSON settings blob.
+4. Set **From** — the address must be on a domain you have verified with that
+   provider.
+
+Credentials may also come from the environment (`RESEND_API_KEY`,
+`BREVO_API_KEY`, `MAILJET_API_KEY`, `MAILJET_SECRET_KEY`), which is useful when
+you would rather keep them in Workers secrets than in the database.
+
+Switching providers does not break anything: the setting takes effect on the
+next send, and an incomplete configuration falls back to the bootstrap log path
+only while the instance has no verified users at all.
+
