@@ -132,6 +132,15 @@ export interface MailProvider {
 
 ### 方式一 · GitHub Actions（推荐，push 即部署）
 
+> 工作流文件已随仓库提供：`deploy/github-actions-deploy.yml`。
+> GitHub 出于安全限制，API 无法直接写入 `.github/workflows/`（创建该目录需带 `workflow` 权限的令牌）。
+> 只需一次性把它放到 `.github/workflows/deploy.yml` 并推送，之后就是全自动了：
+> ```bash
+> mkdir -p .github/workflows && cp deploy/github-actions-deploy.yml .github/workflows/deploy.yml
+> git add .github && git commit -m "ci: enable actions deploy" && git push
+> ```
+> 如果你偏好完全不动手，直接用方式二（`scripts/deploy.sh`）即可，它不依赖 GitHub Actions。
+
 在仓库 `Settings → Secrets and variables → Actions` 配置：
 
 | Secret | 说明 |
