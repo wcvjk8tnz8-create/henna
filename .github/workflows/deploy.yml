@@ -78,6 +78,10 @@ jobs:
       - name: Deploy
         uses: cloudflare/wrangler-action@v4
         with:
+          # Token permissions required: Workers Scripts:Edit, D1:Edit,
+          # Workers R2 Storage:Edit, Workers Observability:Edit,
+          # Account Settings:Read (account), User Details:Read (user).
+          # No Delete permissions anywhere.
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: deploy

@@ -148,6 +148,47 @@ HENNA_STORAGE_ORIGINS=https://<account>.r2.cloudflarestorage.com
 
 `deploy` job 声明了 `needs: quality`。类型检查、代码检查或测试任一失败，都不会部署。
 
+**这里有两个完全不同的「API 令牌」，混淆是最常见的错误。** 一个用来部署应用
+（Cloudflare API 令牌，存进 GitHub Secrets），另一个让 Henna 读写附件（R2 S3 令牌，
+填在 `/admin/settings`）。它们在**不同页面创建**，需要的权限也不同。
+
+#### a) Cloudflare API 令牌 —— 给 CI 里的 `wrangler deploy` 用
+
+**不要**用 *编辑 Cloudflare Workers* 模板。它只覆盖 Workers Scripts，**不含 D1 和 R2**，
+所以部署会半途失败：Worker 传上去了，但数据库和桶创建不了。
+
+请创建**自定义令牌**（*我的个人资料 → API 令牌 → 创建自定义令牌*），权限如下：
+
+| 作用范围 | 权限 | 为什么需要 |
+| --- | --- | --- |
+| 账户 | `Workers Scripts:Edit` | 上传 Worker 产物 |
+| 账户 | `D1:Edit` | 创建 `henna-db` 并执行迁移 |
+| 账户 | `Workers R2 Storage:Edit` | 创建 `henna-attachments` 桶 |
+| 账户 | `Workers Observability:Edit` | `wrangler.jsonc` 里开了 observability |
+| 账户 | `Account Settings:Read` | 部署时读取账户信息 |
+| 用户 | `User Details:Read` | `wrangler` 验证令牌 |
+| 区域 | `Workers Routes:Edit` | 仅当你绑定自定义域名 |
+
+其余一律不开。特别是不要给 `D1:Delete`、不要给 `Workers R2 Storage:Delete`、
+不要给账单权限 —— CI 令牌能删数据，这个代价换便利不划算。
+
+> **你不需要手动跑 `wrangler d1 migrations apply`。** Henna 在首次请求时自建表结构
+> （见 `db/index.ts` 的 `ensureSchema()`），且全部语句都是 `IF NOT EXISTS`。
+> 在 CI 里显式跑迁移当然更好，但跳过它也不会得到一个坏掉的实例。
+
+#### b) R2 令牌 —— Henna 运行时读写附件用
+
+在 *R2 → 管理 R2 API 令牌* 创建，**不是**在「我的个人资料」里：
+
+| 设置 | 值 | 为什么 |
+| --- | --- | --- |
+| 权限 | `Object Read & Write` | 只要 PUT 和 GET 对象，预签名需要的就是这些 |
+| ——不要—— | `Admin Read & Write` | 那等于允许创建和删除桶 |
+| 桶范围 | 仅 `henna-attachments` | 只作用于这一个桶，不碰账户里其他桶 |
+
+`Object Read & Write` 能写入、读取、删除对象；不能列举桶，不能创建或删除桶，
+也不能碰别的桶。这正好是 Henna 需要的全部，多一点都不给。
+
 **仓库 Secrets**（*Settings → Secrets and variables → Actions*）：
 
 | Secret | 必需 | 用途 |

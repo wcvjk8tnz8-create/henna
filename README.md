@@ -119,9 +119,14 @@ fails, nothing is deployed.
 ### GitHub Actions, step by step
 
 1. **Fork or create the repository** and push your `main` branch.
-2. **Create a Cloudflare API token** — *My Profile → API Tokens → Create Token*,
-   using the *Edit Cloudflare Workers* template. Scope it to the account and zone
-   you will deploy to.
+2. **Create a Cloudflare API token** — *My Profile → API Tokens → Create Custom
+   Token*. Do **not** use the *Edit Cloudflare Workers* template: it lacks D1 and
+   R2 permissions, so the deploy fails after the Worker uploads. Grant
+   `Workers Scripts:Edit`, `D1:Edit`, `Workers R2 Storage:Edit`,
+   `Workers Observability:Edit`, `Account Settings:Read` (account scope) and
+   `User Details:Read` (user scope); add `Workers Routes:Edit` (zone scope) only
+   if you use a custom domain. See
+   [docs/cloudflare-deployment.md](docs/cloudflare-deployment.md#8-github-actions-pipeline).
 3. **Find your Account ID** on the Cloudflare dashboard sidebar.
 4. **Add repository secrets** under *Settings → Secrets and variables → Actions*:
 

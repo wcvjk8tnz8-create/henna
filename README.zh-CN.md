@@ -111,8 +111,13 @@ openssl rand -hex 24 | tr -d '\n'          # jwt_secret（仅字母和数字）
 ### GitHub Actions 逐步说明
 
 1. **Fork 或创建仓库**，推送你的 `main` 分支。
-2. **创建 Cloudflare API 令牌** —— *My Profile → API Tokens → Create Token*，
-   使用 *Edit Cloudflare Workers* 模板，作用范围限定到要部署的账户与区域。
+2. **创建 Cloudflare API 令牌** —— *我的个人资料 → API 令牌 → 创建自定义令牌*。
+   **不要**用 *编辑 Cloudflare Workers* 模板：它缺 D1 和 R2 权限，部署会在
+   Worker 上传完之后失败。请授予 `Workers Scripts:Edit`、`D1:Edit`、
+   `Workers R2 Storage:Edit`、`Workers Observability:Edit`、`Account Settings:Read`
+   （账户级）与 `User Details:Read`（用户级）；仅当使用自定义域名时再加区域级的
+   `Workers Routes:Edit`。详见
+   [docs/cloudflare-deployment.zh-CN.md](docs/cloudflare-deployment.zh-CN.md)。
 3. **找 Account ID**，在 Cloudflare 控制台侧边栏。
 4. **添加仓库 Secrets**（*Settings → Secrets and variables → Actions*）：
 

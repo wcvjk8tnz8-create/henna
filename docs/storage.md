@@ -53,6 +53,51 @@ hostname. R2 and MinIO require it; AWS S3 prefers virtual-host style.
 Downloads are the same in reverse: the DAL looks up the row, checks that the key
 sits under the caller's prefix, and signs a short-lived GET.
 
+
+## Which token is which, and what each may do
+
+Three tokens appear in a Henna deployment. They are created in different places
+and must not be substituted for one another.
+
+| Token | Created in | Given to | Minimum permission |
+| --- | --- | --- | --- |
+| Cloudflare API token | *My Profile → API Tokens* | GitHub Actions (`CLOUDFLARE_API_TOKEN`) | `Workers Scripts:Edit`, `D1:Edit`, `Workers R2 Storage:Edit`, `Workers Observability:Edit`, `Account Settings:Read`, `User Details:Read` |
+| R2 S3 token | *R2 → Manage R2 API tokens* | `/admin/settings → Object storage` | `Object Read & Write`, scoped to one bucket |
+| JMAP API token | Your own mail server | `/settings → Mail accounts` | Mail read + submission for one account |
+
+### The R2 token in detail
+
+| Setting | Value | Why |
+| --- | --- | --- |
+| Permissions | `Object Read & Write` | Presigned URLs need put, get and delete on objects — nothing else |
+| — not — | `Admin Read & Write` | Would allow creating and deleting buckets |
+| Bucket scope | One bucket only | A token scoped to one bucket cannot reach any other |
+
+What `Object Read & Write` can and cannot do, worth knowing before you grant it:
+
+- **Can**: `PutObject`, `GetObject`, `DeleteObject`, `HeadObject`, `ListObjects`
+  inside the bucket it is scoped to.
+- **Cannot**: list buckets, create or delete a bucket, read or write another
+  bucket, change bucket settings.
+
+That is precisely the surface Henna's presigning flow uses. If a provider only
+offers an all-buckets token, scope it yourself by creating a dedicated bucket for
+Henna and never reusing that key elsewhere.
+
+### The JMAP token
+
+Henna does not define this one — your mail server does, and it is worth checking
+what yours grants. Henna needs the `core`, `mail` and `submission` capabilities,
+and nothing more:
+
+- **Read** mailboxes and messages (for the inbox, and for local indexing).
+- **Submit** messages (for sending).
+- **Not** account administration, not other users' mail, not vacation or sieve
+  management.
+
+Issue a per-account token rather than a server-wide one, and revoke it by
+deleting the credential in `/settings` — the upstream token dies with it.
+
 ## Setting up Cloudflare R2
 
 1. *Cloudflare dashboard → R2 → Create bucket*. Note the bucket name.

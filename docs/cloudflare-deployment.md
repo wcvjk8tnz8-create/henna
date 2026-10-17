@@ -135,6 +135,54 @@ install → tsc --noEmit → biome → unit tests → Playwright E2E
 The `deploy` job declares `needs: quality`. A failed typecheck, a lint error or a
 red test means nothing ships.
 
+**Two different "API tokens" exist here, and mixing them up is the usual
+mistake.** One deploys the app (a Cloudflare API token, stored as a GitHub
+secret). The other lets Henna read and write attachments (an R2 S3 token,
+entered in `/admin/settings`). They are created in different places and need
+different permissions.
+
+#### a) Cloudflare API token — used by `wrangler deploy` in CI
+
+Do **not** use the *Edit Cloudflare Workers* template. It covers Workers
+Scripts but **not D1 or R2**, so the deploy fails halfway: the Worker uploads
+and then cannot create the database or the bucket.
+
+Create a **custom token** (*My Profile → API Tokens → Create Custom Token*)
+with:
+
+| Scope | Permission | Why |
+| --- | --- | --- |
+| Account | `Workers Scripts:Edit` | Upload the Worker bundle |
+| Account | `D1:Edit` | Create `henna-db` and apply migrations |
+| Account | `Workers R2 Storage:Edit` | Create the `henna-attachments` bucket |
+| Account | `Workers Observability:Edit` | `observability` is enabled in `wrangler.jsonc` |
+| Account | `Account Settings:Read` | Read account metadata during deploy |
+| User | `User Details:Read` | `wrangler` verifies the token |
+| Zone | `Workers Routes:Edit` | Only if you attach a custom domain |
+
+Leave everything else off. In particular, no `D1:Delete`, no
+`Workers R2 Storage:Delete`, and no billing permission — a CI token that can
+destroy data is a bad trade for convenience.
+
+> **You do not need to run `wrangler d1 migrations apply`.** Henna creates its
+> schema on the first request (see `ensureSchema()` in `db/index.ts`), and every
+> statement is `IF NOT EXISTS`. Running the migration explicitly is still
+> recommended in CI, but skipping it does not leave you with a broken instance.
+
+#### b) R2 token — used by Henna at runtime for attachments
+
+Created in *R2 → Manage R2 API tokens*, **not** under *My Profile*:
+
+| Setting | Value | Why |
+| --- | --- | --- |
+| Permissions | `Object Read & Write` | PUT and GET objects; that is all presigning needs |
+| — not — | `Admin Read & Write` | Would allow creating and deleting buckets |
+| Bucket scope | `henna-attachments` only | One bucket, nothing else in the account |
+
+`Object Read & Write` can put, get and delete objects. It cannot list buckets,
+cannot create or destroy one, and cannot touch another bucket. That is exactly
+the surface Henna needs, and nothing more.
+
 **Repository secrets** (*Settings → Secrets and variables → Actions*):
 
 | Secret | Required | Purpose |

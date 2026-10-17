@@ -48,6 +48,45 @@ R2 和 MinIO 必须用路径风格，AWS S3 偏好虚拟主机风格。
 
 下载是同一个流程反过来：DAL 查出记录，确认键名在该用户前缀下，再签一个短时效 GET。
 
+
+## 三种令牌分别是什么，各自能做什么
+
+一次 Henna 部署里会用到三种令牌。它们在不同地方创建，不能互相替代。
+
+| 令牌 | 创建位置 | 交给谁 | 最小权限 |
+| --- | --- | --- | --- |
+| Cloudflare API 令牌 | *我的个人资料 → API 令牌* | GitHub Actions（`CLOUDFLARE_API_TOKEN`） | `Workers Scripts:Edit`、`D1:Edit`、`Workers R2 Storage:Edit`、`Workers Observability:Edit`、`Account Settings:Read`、`User Details:Read` |
+| R2 S3 令牌 | *R2 → 管理 R2 API 令牌* | `/admin/settings → Object storage` | `Object Read & Write`，限定单个桶 |
+| JMAP API 令牌 | 你自己的邮件服务器 | `/settings → Mail accounts` | 单个账户的读信 + 发信 |
+
+### R2 令牌详解
+
+| 设置 | 值 | 为什么 |
+| --- | --- | --- |
+| 权限 | `Object Read & Write` | 预签名只需要对对象做写入、读取、删除 |
+| ——不要—— | `Admin Read & Write` | 那等于允许创建和删除桶 |
+| 桶范围 | 仅一个桶 | 限定到单桶后碰不到别的桶 |
+
+授予之前值得知道 `Object Read & Write` 的边界：
+
+- **能**：在该桶内 `PutObject`、`GetObject`、`DeleteObject`、`HeadObject`、`ListObjects`。
+- **不能**：列举桶、创建或删除桶、读写其他桶、修改桶配置。
+
+这正好覆盖 Henna 预签名流程用到的全部操作。如果你的服务商只能给全桶令牌，
+那就为 Henna 单独建一个桶，并且不要把那把钥匙用在别处。
+
+### JMAP 令牌
+
+这个不由 Henna 定义，由你的邮件服务器决定 —— 但值得去看一眼它到底给了什么。
+Henna 需要 `core`、`mail`、`submission` 三个 capability，其余都不需要：
+
+- **读取**邮箱与邮件（用于收件箱与本地索引）。
+- **提交**邮件（用于发信）。
+- **不需要**账户管理、不需要他人邮件、不需要 sieve 或自动回复管理。
+
+请签发**单账户**令牌而不是服务器级令牌。吊销时在 `/settings` 里删掉该凭证即可，
+上游令牌随之失效。
+
 ## 配置 Cloudflare R2
 
 1. *Cloudflare 控制台 → R2 → 创建存储桶*，记下桶名。
