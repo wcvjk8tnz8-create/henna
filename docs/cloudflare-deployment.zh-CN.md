@@ -8,6 +8,79 @@ Workers。本文覆盖适配器、Hyperdrive、Workers Secrets、Resend DNS 与 
 
 ---
 
+## 界面部署（全程不用命令行）
+
+这条路只需要浏览器。做法参照 Cloud Mail，也应该是大多数人走的那条。
+
+### 1. 把仓库弄进你的 GitHub
+
+Fork `https://github.com/wcvjk8tnz8-create/henna`。Cloudflare 从**你的 fork** 构建，
+所以要指向它。
+
+### 2. 创建 Worker
+
+*Cloudflare 控制台 → 计算（Workers）→ Workers 和 Pages → 创建 → 连接到 Git*，
+选中刚才的 fork。
+
+全部保持默认。**不要设置根目录** —— Henna 是仓库根部的单一 Next.js 项目，
+不像 Cloud Mail 那样 Worker 藏在子目录里。
+
+点 **部署**。
+
+### 3. 添加三个变量
+
+*Worker → 设置 → 变量和机密 → 添加*
+
+| 名称 | 类型 | 值 |
+| --- | --- | --- |
+| `DOMAIN` | JSON | `["example.com"]` —— 即使只有一个域名也要写成数组 |
+| `ADMIN` | 文本 | 你的邮箱，它会成为第一个管理员 |
+| `jwt_secret` | 机密 | 随机字母与数字，32 位以上 |
+
+```bash
+openssl rand -hex 24    # 输出作为 jwt_secret
+```
+
+`DOMAIN` 必须是 **JSON** 而不是文本：写成裸的 `example.com` 会在启动时被拒。
+`jwt_secret` 只接受字母和数字 —— 不带标点，因为这个值会经过 CI 密钥存储和
+shell 脚本。
+
+然后**重新部署**一次，让 Worker 读到新值。
+
+### 4. 数据库和附件已经好了
+
+这是 Henna 与 Cloud Mail 唯一实质性的差别，值得单独说清楚，因为 Cloud Mail 的
+教程会让你手动创建并绑定 D1：
+
+| | Cloud Mail | Henna |
+| --- | --- | --- |
+| D1 数据库 | 控制台创建、复制 id、绑定为 `db` | `wrangler.jsonc` 里按**名字**声明，首次部署自动创建 |
+| KV 命名空间 | 创建并绑定为 `kv` | 不使用 |
+| R2 桶 | 创建、绑定为 `r2`、设自定义域 | 按名字声明，首次部署自动创建 |
+| 表结构 | 访问 `/api/init/<jwt_secret>` | 首次请求自动创建 |
+| 变量 | 3 个（控制台填） | 3 个（控制台填） |
+
+没有 id 要复制，也没有 `/api/init/…` 要访问。`db/index.ts` 的 `ensureSchema()`
+在首次请求时执行，且全部语句都是 `IF NOT EXISTS`，所以是幂等的。
+
+### 5. 登录
+
+1. 打开 `*.workers.dev` 地址（绑了自定义域名就打开它）。
+2. 用 `ADMIN` 邮箱请求验证码。
+3. 此时还没配邮件服务，所以验证码会打印到日志 —— 用 `npx wrangler tail` 查看，
+   或在 *Workers → 日志* 里看。
+4. 设置密码并启用 TOTP。管理员必须启用。
+5. 到 `/admin/settings` 配置 Resend、GitHub OAuth 与对象存储。
+
+如果完全不想碰终端，日志在控制台里也有：进入该 Worker 的 **日志** 标签页即可。
+
+### 6. 可选：自定义域名
+
+*Worker → 设置 → 域和路由 → 添加 → 自定义域*。Cloudflare 自动签发证书，
+不用买，也不用手写 DNS 记录。
+
+---
+
 ## 一键部署
 
 [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/wcvjk8tnz8-create/henna)

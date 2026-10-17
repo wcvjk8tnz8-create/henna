@@ -9,24 +9,31 @@
   // Henna must never cache authenticated responses or mail-related assets.
   "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
 
+  // THREE variables. That is the entire deployment configuration.
+  //
+  // Fill them in the Cloudflare dashboard after the first deploy
+  // (Settings → Variables and Secrets → Add), or override them here. Everything
+  // else — GitHub OAuth, Resend, object storage, TOTP policy, registration
+  // mode — is configured in /admin/settings once you are signed in.
+  //
+  // jwt_secret is listed as an empty placeholder on purpose: put the real value
+  // in the dashboard, not in this file, so it never reaches the repository.
   "vars": {
-    // DOMAIN is a JSON array, exactly as documented in docs/self-hosting.md.
+    // Mail domains this instance serves, as a JSON array.
     "DOMAIN": "[\"example.com\"]",
+    // This address bootstraps the first administrator.
     "ADMIN": "root@example.com",
-    "HENNA_REGISTRATION_MODE": "closed",
-    "HENNA_TOTP_POLICY": "admin-only",
-    // Cloudflare terminates TLS at the edge, so X-Forwarded-For is trustworthy.
-    "HENNA_TRUST_PROXY": "1"
+    // Session signing secret: letters and digits only, 32+ characters.
+    // openssl rand -hex 24
+    "jwt_secret": ""
   },
 
-  // Only ONE secret is required:
-  //   npx wrangler secret put jwt_secret
-  // Optional (both can be entered in /admin/settings instead):
-  //   npx wrangler secret put GITHUB_CLIENT_SECRET
-  //   npx wrangler secret put RESEND_API_KEY
-  // HENNA_CREDENTIAL_KEY is not needed — when absent it is derived from
-  // jwt_secret by HKDF. Set it explicitly if you want the two to rotate
-  // independently.
+  // Nothing else is needed. Specifically NOT needed:
+  //   HENNA_CREDENTIAL_KEY — derived from jwt_secret by HKDF when absent.
+  //   GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET — /admin/settings.
+  //   RESEND_API_KEY / HENNA_EMAIL_FROM — /admin/settings.
+  //   HENNA_REGISTRATION_MODE / HENNA_TOTP_POLICY — /admin/settings, and both
+  //     have safe defaults (closed, admin-only).
 
   // Database. Declared by NAME, not by id: Cloudflare creates the D1 database on
   // first deploy, so there is no id to copy and nothing to paste here.

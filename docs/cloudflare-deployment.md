@@ -8,6 +8,84 @@ the GitHub Actions pipeline.
 
 ---
 
+## Dashboard deployment (no CLI at all)
+
+This is the path that needs nothing but a browser. It is modelled on how Cloud
+Mail is deployed, and it is the one most people should follow.
+
+### 1. Get the repository into your GitHub account
+
+Fork `https://github.com/wcvjk8tnz8-create/henna`. Cloudflare builds from *your*
+fork, so the fork is the thing you will point it at.
+
+### 2. Create the Worker
+
+*Cloudflare dashboard → Compute (Workers) → Workers & Pages → Create →
+Connect to Git* and pick your fork.
+
+Leave everything at its default. **Do not set a root directory** — Henna is a
+single Next.js project at the repository root, unlike Cloud Mail where the
+Worker lives in a subdirectory.
+
+Click **Deploy**.
+
+### 3. Add the three variables
+
+*Worker → Settings → Variables and Secrets → Add*
+
+| Name | Type | Value |
+| --- | --- | --- |
+| `DOMAIN` | JSON | `["example.com"]` — a JSON array, even for one domain |
+| `ADMIN` | Text | Your email address; this becomes the first administrator |
+| `jwt_secret` | Secret | Random letters and digits, 32+ characters |
+
+```bash
+openssl rand -hex 24    # paste the output as jwt_secret
+```
+
+`DOMAIN` must be **JSON**, not text: a bare `example.com` will be rejected at
+boot. `jwt_secret` accepts letters and digits only — no punctuation, because
+the value travels through CI secret stores and shell scripts.
+
+Then **redeploy** so the Worker picks up the new values.
+
+### 4. Database and attachments are already done
+
+This is the one place Henna differs from Cloud Mail, and it is worth being
+explicit about, because the Cloud Mail instructions will tell you to create and
+bind a D1 database by hand:
+
+| | Cloud Mail | Henna |
+| --- | --- | --- |
+| D1 database | Create in the dashboard, copy the id, bind as `db` | Declared **by name** in `wrangler.jsonc`; created on first deploy |
+| KV namespace | Create and bind as `kv` | Not used |
+| R2 bucket | Create, bind as `r2`, set a custom domain | Declared by name; created on first deploy |
+| Schema | Visit `/api/init/<jwt_secret>` | Created automatically on the first request |
+| Variables | 3 in the dashboard | 3 in the dashboard |
+
+There is no id to copy and no `/api/init/…` URL to visit. `ensureSchema()` in
+`db/index.ts` runs on the first request and every statement is `IF NOT EXISTS`,
+so it is idempotent.
+
+### 5. Sign in
+
+1. Open the `*.workers.dev` URL (or your custom domain once you attach one).
+2. Request a code with the `ADMIN` address.
+3. No mail service is configured yet, so the code is printed to the log — read
+   it with `npx wrangler tail`, or in *Workers → Logs*.
+4. Set a password and turn on TOTP. Administrators must.
+5. Configure Resend, GitHub OAuth and object storage in `/admin/settings`.
+
+If you would rather not touch a terminal at all, the log is also visible in the
+Cloudflare dashboard under your Worker's **Logs** tab.
+
+### 6. Optional: custom domain
+
+*Worker → Settings → Domains & Routes → Add → Custom domain*. Cloudflare
+issues the certificate; there is nothing to buy and no DNS record to write by
+hand.
+
+---
 ## One-click deployment
 
 [![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/wcvjk8tnz8-create/henna)

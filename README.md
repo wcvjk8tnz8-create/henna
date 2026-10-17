@@ -98,6 +98,11 @@ you, and asks for **three values**. That is the whole setup — there is no
 openssl rand -hex 24    # paste the output as jwt_secret
 ```
 
+Prefer the dashboard over the button? See
+[docs/cloudflare-deployment.md](docs/cloudflare-deployment.md#dashboard-deployment-no-cli-at-all)
+— fork, create a Worker, add the same three values under
+*Settings → Variables and Secrets*, redeploy.
+
 Then sign in for the first time:
 
 1. Open your `*.workers.dev` URL and request a code with the `ADMIN` address.

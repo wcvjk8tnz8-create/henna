@@ -91,6 +91,10 @@ Cloudflare 会 fork 本仓库，并**自动**为你创建 D1 数据库与 R2 存
 openssl rand -hex 24    # 输出作为 jwt_secret
 ```
 
+更想走控制台而不是按钮？见
+[docs/cloudflare-deployment.zh-CN.md](docs/cloudflare-deployment.zh-CN.md#界面部署全程不用命令行)
+—— fork、创建 Worker、在 *设置 → 变量和机密* 里加同样的三个值、重新部署。
+
 然后首次登录：
 
 1. 打开你的 `*.workers.dev` 地址，用 `ADMIN` 邮箱请求验证码。
