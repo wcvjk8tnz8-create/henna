@@ -8,6 +8,63 @@ Workers。本文覆盖适配器、Hyperdrive、Workers Secrets、Resend DNS 与 
 
 ---
 
+## 一键部署
+
+[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/wcvjk8tnz8-create/henna)
+
+大多数人应该走这条路。Cloudflare 会 fork 本仓库，**自动**创建 D1 数据库与 R2 存储桶，
+然后只要求填三个值。不需要改 `wrangler.jsonc`，不需要跑迁移。
+
+| 字段 | 填什么 |
+| --- | --- |
+| `DOMAIN` | 你要服务的邮件域名，JSON 数组，如 `["example.com"]` |
+| `ADMIN` | 你的邮箱，它会成为第一个管理员 |
+| `jwt_secret` | 随机字母与数字，32 位以上 |
+
+```bash
+openssl rand -hex 24    # 输出作为 jwt_secret
+```
+
+### 为什么只要三个
+
+其余都有可用默认值。不填 `HENNA_CREDENTIAL_KEY` 时，会用 HKDF 从 `jwt_secret` 派生。
+D1 数据库与 R2 桶在 `wrangler.jsonc` 里是按**名字**声明的，所以 Cloudflare 首次部署
+时自动创建 —— 这就是为什么全文没有出现任何 id 或连接串。表结构在首次请求时创建
+（`db/index.ts` 的 `ensureSchema()`，全部 `IF NOT EXISTS`）。
+
+### 点击之前要知道的两件事
+
+**fork 之后的 GitHub Actions 会失败。** 它需要 `CLOUDFLARE_API_TOKEN` 与
+`CLOUDFLARE_ACCOUNT_ID`，而一键部署流程不会设置这两个。那条流水线是给下面 §8 的
+CI/CD 路径用的；一键部署走的是 Cloudflare 自己的构建系统，不依赖它。可以直接忽略
+那个红叉，或在 fork 里关掉 Actions（*Settings → Actions → Disable*）。
+
+**如果 Cloudflare 没识别出构建命令**，手动填：
+
+| 设置 | 值 |
+| --- | --- |
+| Build command | `npx opennextjs-cloudflare build` |
+| Deploy command | `npx wrangler deploy` |
+
+### 首次登录
+
+此时还没配邮件服务，所以验证码发不到你邮箱。Henna 会改为把验证码打印到服务端日志，
+**仅此一次**，且只在实例仍处于「全新」状态时：
+
+```bash
+npx wrangler tail
+# [henna] BOOTSTRAP sign-in code for you@example.com: 123456 (single use, expires in 10 minutes)
+```
+
+这是对「绝不记录验证码」的一次刻意、范围严格受限的例外。它只对 `ADMIN` 地址生效，
+且只在没有任何用户完成邮箱验证时生效 —— 你一登录，它就永久关闭，此后必须正常配置
+邮件服务。验证码本身仍然是一次性、10 分钟有效、受限流保护。
+
+首次登录之后：设置密码、启用 TOTP（管理员必须），然后到 `/admin/settings` 配置
+Resend、GitHub OAuth 与对象存储。
+
+---
+
 ## 1. Workers 上什么能跑，什么不能
 
 | 组件 | Workers | 说明 |

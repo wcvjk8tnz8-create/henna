@@ -74,6 +74,34 @@ Henna 走反方向。服务端只处理身份、加密凭证、设置与审计�
 邮件只在第一条线上，Henna 服务端只在第二条线上，两者不相交。详见
 [docs/architecture.zh-CN.md](docs/architecture.zh-CN.md)。
 
+## 一键部署
+
+[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/wcvjk8tnz8-create/henna)
+
+Cloudflare 会 fork 本仓库，并**自动**为你创建 D1 数据库与 R2 存储桶，然后只要求填
+**三个值**。这就是全部配置 —— 不需要改 `wrangler.jsonc`，不需要跑迁移。
+
+| 字段 | 填什么 |
+| --- | --- |
+| `DOMAIN` | 你要服务的邮件域名，JSON 数组，如 `["example.com"]` |
+| `ADMIN` | 你的邮箱，它会成为第一个管理员 |
+| `jwt_secret` | 随机字母与数字，32 位以上 |
+
+```bash
+openssl rand -hex 24    # 输出作为 jwt_secret
+```
+
+然后首次登录：
+
+1. 打开你的 `*.workers.dev` 地址，用 `ADMIN` 邮箱请求验证码。
+2. 此时还没配邮件服务，所以**验证码会打印到服务端日志**。用 `npx wrangler tail` 查看。
+3. 输入验证码，设置密码，启用 TOTP —— 管理员必须启用。
+4. 到 `/admin/settings` 配置 Resend、GitHub OAuth 与对象存储。
+
+第 2 步是一次性的刻意例外：没有任何发信手段时，实例否则根本无法登录。它只在
+「还没有任何人完成登录」时生效，且只对 `ADMIN` 地址生效。详见
+[docs/cloudflare-deployment.zh-CN.md](docs/cloudflare-deployment.zh-CN.md#一键部署)。
+
 ## 快速开始（本地）
 
 ```bash

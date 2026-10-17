@@ -61,8 +61,16 @@ export async function saveInstanceSettings(formData: FormData): Promise<AdminRes
     githubAllowedOrgs: splitList(formData.get("githubAllowedOrgs") ?? null),
     resendApiKey: optionalSecret(formData.get("resendApiKey") ?? null),
     emailFrom: typeof raw.emailFrom === "string" && raw.emailFrom !== "" ? raw.emailFrom : null,
-    registrationMode: parseEnum(raw.registrationMode, ["closed", "invite-only", "allowlist"], current.registrationMode),
-    totpPolicy: parseEnum(raw.totpPolicy, ["optional", "required", "admin-only"], current.totpPolicy),
+    registrationMode: parseEnum(raw.registrationMode, ["closed", "invite-only", "allowlist"], current.registrationMode) as
+      | "closed"
+      | "invite-only"
+      | "allowlist"
+      | undefined,
+    totpPolicy: parseEnum(raw.totpPolicy, ["optional", "required", "admin-only"], current.totpPolicy) as
+      | "optional"
+      | "required"
+      | "admin-only"
+      | undefined,
     passwordMinLength: clampNumber(raw.passwordMinLength, 12, 128, current.passwordMinLength),
     passwordRequireComplexity: formData.get("passwordRequireComplexity") === "on",
     otpTtlSeconds: clampNumber(raw.otpTtlSeconds, 60, 3600, current.otpTtlSeconds),

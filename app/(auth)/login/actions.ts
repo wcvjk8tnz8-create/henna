@@ -296,7 +296,11 @@ export async function requestEmailCode(formData: FormData): Promise<ActionResult
   });
 
   // Deliver through Resend on the server; the API key never reaches a browser.
-  await deliverCode(parsed.value.email, issued.code);
+  const delivery = await deliverCode(
+    parsed.value.email,
+    issued.code,
+    settings.otpTtlSeconds,
+  );
 
   await writeAudit({
     action: AUDIT_ACTIONS.LOGIN_EMAIL_OTP_SENT,
@@ -306,10 +310,19 @@ export async function requestEmailCode(formData: FormData): Promise<ActionResult
     resourceType: "auth",
     ipHash: ctx.ipHash,
     userAgentHash: ctx.userAgentHash,
-    metadata: { ttlSeconds: settings.otpTtlSeconds },
+    metadata: { ttlSeconds: settings.otpTtlSeconds, delivery },
   });
 
-  return { ok: true, message: "If that address can use Henna, a code is on its way." };
+  // Only the bootstrap branch says anything specific: it has to, or the
+  // operator cannot find the code. It does confirm the ADMIN address, which is
+  // why it is gated on the instance having no verified users at all.
+  return {
+    ok: true,
+    message:
+      delivery === "bootstrap"
+        ? "No mail is configured yet, so the code was printed to the server log. Run `npx wrangler tail` to read it."
+        : "If that address can use Henna, a code is on its way.",
+  };
 }
 
 /**
@@ -318,19 +331,42 @@ export async function requestEmailCode(formData: FormData): Promise<ActionResult
  * `RESEND_API_KEY` is read server-side from the encrypted instance settings (or
  * the environment fallback) and is never exposed to the client bundle.
  */
-async function deliverCode(email: string, code: string): Promise<void> {
-  const { getInstanceSecrets } = await import("@/lib/config/settings");
-  const { getInstanceSettings: readSettings } = await import("@/lib/config/settings");
+/**
+ * How a code left the building — or failed to.
+ *
+ * "sent" is normal. "bootstrap" only ever happens on a brand-new instance that
+ * has no way to send mail yet, and it is the difference between a one-click
+ * deployment working and being impossible to sign in to at all.
+ */
+type DeliveryMode = "sent" | "bootstrap" | "not-configured";
+
+async function deliverCode(email: string, code: string, ttlSeconds: number): Promise<DeliveryMode> {
+  const { getInstanceSecrets, getInstanceSettings: readSettings } = await import(
+    "@/lib/config/settings"
+  );
   const [secrets, settings] = await Promise.all([getInstanceSecrets(), readSettings()]);
 
   const apiKey = secrets.resendApiKey;
   const from = settings.emailFrom;
   if (!apiKey || !from) {
-    if (process.env.NODE_ENV !== "production") {
-      // Local development only: never log a code in production.
-      console.info(`[henna] login code for ${email}: ${code}`);
+    if (await isBootstrapEligible(email)) {
+      // Deliberate, narrowly scoped exception to "never log a code".
+      //
+      // A freshly deployed instance has no Resend key, so it cannot send mail —
+      // and without a code nobody can sign in to configure one. Deadlock. The
+      // way out is to print the code to the server log exactly once, and only
+      // while the instance is still untouched.
+      //
+      // Guarded by: the bootstrap address only, no user has ever verified an
+      // email, and the code is still single-use, short-lived and rate limited.
+      console.info(
+        `[henna] BOOTSTRAP sign-in code for ${email}: ${code} ` +
+          `(single use, expires in ${Math.round(ttlSeconds / 60)} minutes). ` +
+          `View with: npx wrangler tail`,
+      );
+      return "bootstrap";
     }
-    return;
+    return "not-configured";
   }
 
   await fetch("https://api.resend.com/emails", {
@@ -346,12 +382,42 @@ async function deliverCode(email: string, code: string): Promise<void> {
       text: [
         `Your Henna sign-in code is ${code}.`,
         "",
-        "It expires in 10 minutes and can only be used once.",
+        `It expires in ${Math.round(ttlSeconds / 60)} minutes and can only be used once.`,
         "If you did not request it, you can ignore this message.",
       ].join("\n"),
     }),
     cache: "no-store",
   });
+
+  return "sent";
+}
+
+/**
+ * Whether this request may fall back to logging the code.
+ *
+ * True only while the instance is genuinely untouched: nobody has completed a
+ * sign-in, so no user row carries a verified email. As soon as the first
+ * administrator signs in, this returns false for good and mail must be
+ * configured properly.
+ */
+async function isBootstrapEligible(email: string): Promise<boolean> {
+  try {
+    const { getAdminEmail } = await import("@/lib/config/env");
+    if (email.trim().toLowerCase() !== getAdminEmail().toLowerCase()) return false;
+
+    const { getDb } = await import("@/db");
+    const { users } = await import("@/db/schema");
+    const { isNotNull } = await import("drizzle-orm");
+
+    const verified = await getDb()
+      .select({ id: users.id })
+      .from(users)
+      .where(isNotNull(users.emailVerifiedAt))
+      .limit(1);
+    return verified.length === 0;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -382,7 +448,7 @@ export async function requestPasswordReset(formData: FormData): Promise<ActionRe
     context: ctx,
   });
 
-  await deliverCode(parsed.value.email, issued.code);
+  await deliverCode(parsed.value.email, issued.code, settings.otpTtlSeconds);
 
   await writeAudit({
     action: AUDIT_ACTIONS.PASSWORD_RESET_REQUESTED,

@@ -80,6 +80,37 @@ Browser ──JMAP────────────────► Upstream m
 Mail payloads are on the top line only. The Henna server is on the bottom line
 only. The two never mix. See [docs/architecture.md](docs/architecture.md).
 
+## Deploy in one click
+
+[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/wcvjk8tnz8-create/henna)
+
+Cloudflare forks this repository, creates the D1 database and the R2 bucket for
+you, and asks for **three values**. That is the whole setup — there is no
+`wrangler.jsonc` to edit and no migration to run.
+
+| Field | What to enter |
+| --- | --- |
+| `DOMAIN` | JSON array of the mail domains you serve, e.g. `["example.com"]` |
+| `ADMIN` | Your email address. This becomes the first administrator. |
+| `jwt_secret` | Random letters and digits, 32+ characters |
+
+```bash
+openssl rand -hex 24    # paste the output as jwt_secret
+```
+
+Then sign in for the first time:
+
+1. Open your `*.workers.dev` URL and request a code with the `ADMIN` address.
+2. No mail service is configured yet, so **the code is printed to the server
+   log**. Read it with `npx wrangler tail`.
+3. Enter the code, set a password, and turn on TOTP — administrators must.
+4. Configure Resend, GitHub OAuth and object storage in `/admin/settings`.
+
+Step 2 is a deliberate, one-time exception: with no way to send mail, an
+instance would otherwise be impossible to sign in to at all. It applies only
+while nobody has completed a sign-in, and only for the `ADMIN` address. See
+[docs/cloudflare-deployment.md](docs/cloudflare-deployment.md#one-click-deployment).
+
 ## Quick start (local)
 
 ```bash

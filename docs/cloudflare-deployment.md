@@ -8,6 +8,71 @@ the GitHub Actions pipeline.
 
 ---
 
+## One-click deployment
+
+[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/wcvjk8tnz8-create/henna)
+
+This is the path most people should take. Cloudflare forks the repository,
+creates the D1 database and the R2 bucket automatically, and asks for three
+values. There is no `wrangler.jsonc` to edit and no migration to run.
+
+| Field | What to enter |
+| --- | --- |
+| `DOMAIN` | JSON array of the mail domains you serve, e.g. `["example.com"]` |
+| `ADMIN` | Your email address. This becomes the first administrator. |
+| `jwt_secret` | Random letters and digits, 32+ characters |
+
+```bash
+openssl rand -hex 24    # paste the output as jwt_secret
+```
+
+### Why only three
+
+Everything else has a working default. `HENNA_CREDENTIAL_KEY` is derived from
+`jwt_secret` by HKDF when absent. The D1 database and the R2 bucket are declared
+by *name* in `wrangler.jsonc`, so Cloudflare creates them on first deploy — that
+is why no id or connection string appears anywhere. The schema is created on the
+first request (`ensureSchema()` in `db/index.ts`, every statement `IF NOT
+EXISTS`).
+
+### Two things worth knowing before you click
+
+**The fork's GitHub Actions workflow will fail.** It needs
+`CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`, which the one-click flow
+does not set. That workflow is for the CI/CD path described in §8 below; the
+one-click deployment uses Cloudflare's own build system and does not depend on
+it. Either ignore the red check, or disable Actions in the fork
+(*Settings → Actions → Disable*).
+
+**If Cloudflare does not detect your build command**, set it manually:
+
+| Setting | Value |
+| --- | --- |
+| Build command | `npx opennextjs-cloudflare build` |
+| Deploy command | `npx wrangler deploy` |
+
+### First sign-in
+
+No mail service is configured yet, so a code cannot be emailed to you. Henna
+prints the code to the server log instead, **once**, and only while the instance
+is still untouched:
+
+```bash
+npx wrangler tail
+# [henna] BOOTSTRAP sign-in code for you@example.com: 123456 (single use, expires in 10 minutes)
+```
+
+This is a deliberate, narrowly scoped exception to "never log a code". It
+applies only to the `ADMIN` address and only while no user has a verified email
+— as soon as you sign in, it stops and mail must be configured properly. The
+code is still single-use, 10-minute and rate limited.
+
+After that first sign-in: set a password, turn on TOTP (mandatory for
+administrators), then configure Resend, GitHub OAuth and object storage in
+`/admin/settings`.
+
+---
+
 ## 1. What works on Workers, and what does not
 
 | Component | On Workers | Notes |
