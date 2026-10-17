@@ -46,6 +46,49 @@ export interface ActionResult {
   readonly redirectTo?: string;
 }
 
+/**
+ * Form state for `useActionState`.
+ *
+ * The login form binds these directly instead of going through a client
+ * wrapper, so the form still submits when JavaScript has not loaded — with a
+ * client wrapper the button did nothing at all in that case.
+ *
+ * `codeSent` is a UI fact the Server Action has to report back: the code field
+ * only appears after a code has actually been sent, and only the server knows
+ * whether that happened.
+ */
+export interface LoginFormState {
+  readonly message: string | null;
+  readonly codeSent: boolean;
+}
+
+export const initialLoginState: LoginFormState = { message: null, codeSent: false };
+
+export async function passwordSignInAction(
+  _previous: LoginFormState,
+  formData: FormData,
+): Promise<LoginFormState> {
+  const result = await signInWithPassword(formData);
+  return { message: result.ok ? null : result.message, codeSent: false };
+}
+
+export async function emailCodeAction(
+  _previous: LoginFormState,
+  formData: FormData,
+): Promise<LoginFormState> {
+  // One action, two steps: without a code it sends one, with a code it
+  // verifies. Whether the code field should stay visible is a UI fact only the
+  // server knows, so it comes back in the state.
+  const raw = formDataToObject(formData);
+  const hasCode = typeof raw.code === "string" && raw.code.trim().length > 0;
+
+  const result = await requestEmailCode(formData);
+  return {
+    message: result.ok ? null : result.message,
+    codeSent: hasCode || result.ok,
+  };
+}
+
 const GENERIC_FAILURE = "We could not sign you in. Check your details and try again.";
 
 async function context() {

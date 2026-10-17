@@ -1,7 +1,14 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { beginEnrollment, verifySecondFactor, confirmEnrollment } from "./actions";
+import { useState } from "react";
+import { useActionState } from "react";
+import {
+  beginEnrollment,
+  verifySecondFactor,
+  confirmEnrollment,
+  initialMfaState,
+  mfaVerifyAction,
+} from "./actions";
 
 export interface MfaFormProps {
   readonly enrolled: boolean;
@@ -13,18 +20,28 @@ export interface MfaFormProps {
 }
 
 export function MfaForm(props: MfaFormProps) {
-  const [pending, startTransition] = useTransition();
-  const [message, setMessage] = useState<string | null>(null);
+  /**
+   * The verify form binds a Server Action directly rather than through a client
+   * wrapper, so it still submits when JavaScript has not loaded. That matters
+   * more here than anywhere else: this form is the last step of signing in, so
+   * a button that silently does nothing locks the user out completely.
+   */
+  const [state, verifyAction, verifying] = useActionState(mfaVerifyAction, initialMfaState);
+  const [enrollPending, setEnrollPending] = useState(false);
   const [useRecovery, setUseRecovery] = useState(false);
   const [enrollment, setEnrollment] = useState<{
     secret: string;
     uri: string;
     recoveryCodes: string[];
   } | null>(null);
+  const [enrollError, setEnrollError] = useState<string | null>(null);
+  // Whether to confirm a fresh enrollment or verify an existing one is a
+  // server-side question, so the form tells the action which it is.
+  const confirming = Boolean(enrollment);
 
-  function onEnroll() {
-    setMessage(null);
-    startTransition(async () => {
+  async function onEnroll() {
+    setEnrollPending(true);
+    try {
       const result = await beginEnrollment();
       if (result.ok && result.secret) {
         setEnrollment({
@@ -33,18 +50,11 @@ export function MfaForm(props: MfaFormProps) {
           recoveryCodes: result.recoveryCodes ?? [],
         });
       } else {
-        setMessage(result.message);
+        setEnrollError(result.message);
       }
-    });
-  }
-
-  function onSubmit(formData: FormData) {
-    setMessage(null);
-    startTransition(async () => {
-      const action = enrollment ? confirmEnrollment : verifySecondFactor;
-      const result = await action(formData);
-      if (result && !result.ok) setMessage(result.message);
-    });
+    } finally {
+      setEnrollPending(false);
+    }
   }
 
   return (
@@ -53,10 +63,10 @@ export function MfaForm(props: MfaFormProps) {
         <button
           type="button"
           onClick={onEnroll}
-          disabled={pending}
+          disabled={enrollPending}
           className="w-full rounded-md bg-henna-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-henna-700 disabled:opacity-60"
         >
-          {pending ? "Preparing…" : "Set up an authenticator"}
+          {enrollPending ? "Preparing…" : "Set up an authenticator"}
         </button>
       ) : null}
 
@@ -87,7 +97,8 @@ export function MfaForm(props: MfaFormProps) {
       ) : null}
 
       {props.enrolled || enrollment ? (
-        <form action={onSubmit} className="mt-4 space-y-4">
+        <form action={verifyAction} className="mt-4 space-y-4">
+          <input type="hidden" name="mode" value={confirming ? "confirm" : "verify"} />
           {useRecovery ? (
             <label className="block">
               <span className="mb-1.5 block text-sm font-medium">Recovery code</span>
@@ -115,10 +126,10 @@ export function MfaForm(props: MfaFormProps) {
           )}
           <button
             type="submit"
-            disabled={pending}
+            disabled={verifying}
             className="w-full rounded-md bg-henna-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-henna-700 disabled:opacity-60"
           >
-            {pending ? "Checking…" : enrollment ? "Confirm and continue" : "Verify"}
+            {verifying ? "Checking…" : confirming ? "Confirm and continue" : "Verify"}
           </button>
         </form>
       ) : null}
@@ -140,9 +151,9 @@ export function MfaForm(props: MfaFormProps) {
         </p>
       ) : null}
 
-      {message ? (
+      {state.message || enrollError ? (
         <p role="alert" className="mt-4 text-sm text-red-700 dark:text-red-300">
-          {message}
+          {state.message ?? enrollError}
         </p>
       ) : null}
     </div>

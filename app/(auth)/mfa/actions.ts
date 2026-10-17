@@ -153,3 +153,28 @@ export async function verifySecondFactor(formData: FormData): Promise<MfaActionR
 export async function confirmEnrollment(formData: FormData): Promise<MfaActionResult | undefined> {
   return verifySecondFactor(formData);
 }
+
+/* ------------------------------------------------- useActionState wrappers */
+
+export interface MfaFormState {
+  readonly message: string | null;
+}
+
+export const initialMfaState: MfaFormState = { message: null };
+
+/**
+ * One form, two outcomes: confirm a fresh enrollment, or verify an existing
+ * one. The form says which via a `mode` field, because whether an enrollment is
+ * pending is server-side state the client cannot be trusted to infer.
+ */
+export async function mfaVerifyAction(
+  _previous: MfaFormState,
+  formData: FormData,
+): Promise<MfaFormState> {
+  const mode = formData.get("mode");
+  const result =
+    mode === "confirm" ? await confirmEnrollment(formData) : await verifySecondFactor(formData);
+
+  // A successful verify redirects, so only failures return here.
+  return { message: result && !result.ok ? result.message : null };
+}

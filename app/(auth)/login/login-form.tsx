@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { requestEmailCode, signInWithPassword } from "./actions";
+import { useState } from "react";
+import { useActionState } from "react";
+import { emailCodeAction, initialLoginState, passwordSignInAction } from "./actions";
 
 export interface LoginFormProps {
   readonly methods: readonly string[];
@@ -17,30 +18,26 @@ export interface LoginFormProps {
 type Mode = "password" | "email_otp";
 
 export function LoginForm(props: LoginFormProps) {
-  const [mode, setMode] = useState<Mode>(props.methods.includes("password") ? "password" : "email_otp");
-  const [pending, startTransition] = useTransition();
-  const [message, setMessage] = useState<string | null>(null);
-  const [otpSent, setOtpSent] = useState(false);
+  const [mode, setMode] = useState<Mode>(
+    props.methods.includes("password") ? "password" : "email_otp",
+  );
+
+  /**
+   * Both forms bind a Server Action directly.
+   *
+   * They used to go through client wrappers (`onSubmit` → `startTransition` →
+   * `await action()`), which meant the buttons did nothing whenever JavaScript
+   * had not loaded or hydration had not finished. Binding the action directly
+   * lets the browser submit natively.
+   */
+  const [passwordState, passwordAction, passwordPending] = useActionState(
+    passwordSignInAction,
+    initialLoginState,
+  );
+  const [otpState, otpAction, otpPending] = useActionState(emailCodeAction, initialLoginState);
 
   const passwordAllowed = props.methods.includes("password");
   const emailOtpAllowed = props.methods.includes("email_otp") && props.emailOtpEnabled;
-
-  function onPasswordSubmit(formData: FormData) {
-    setMessage(null);
-    startTransition(async () => {
-      const result = await signInWithPassword(formData);
-      if (result && !result.ok) setMessage(result.message);
-    });
-  }
-
-  function onRequestCode(formData: FormData) {
-    setMessage(null);
-    startTransition(async () => {
-      const result = await requestEmailCode(formData);
-      setOtpSent(true);
-      setMessage(result.message);
-    });
-  }
 
   return (
     <div className="mt-8">
@@ -85,7 +82,7 @@ export function LoginForm(props: LoginFormProps) {
       </div>
 
       {mode === "password" && passwordAllowed ? (
-        <form action={onPasswordSubmit} className="space-y-4">
+        <form action={passwordAction} className="space-y-4">
           <input type="hidden" name="next" value={props.nextPath} />
           <Field
             label="Email"
@@ -104,12 +101,17 @@ export function LoginForm(props: LoginFormProps) {
             minLength={props.passwordMinLength}
             description={`At least ${props.passwordMinLength} characters.`}
           />
-          <Submit pending={pending} label="Sign in" />
+          <SubmitButton label="Sign in" pending={passwordPending} />
+          {passwordState.message ? (
+            <p role="alert" className="text-sm text-red-700 dark:text-red-300">
+              {passwordState.message}
+            </p>
+          ) : null}
         </form>
       ) : null}
 
       {mode === "email_otp" && emailOtpAllowed ? (
-        <form action={onRequestCode} className="space-y-4">
+        <form action={otpAction} className="space-y-4">
           <input type="hidden" name="next" value={props.nextPath} />
           <Field
             label="Email"
@@ -119,7 +121,7 @@ export function LoginForm(props: LoginFormProps) {
             required
             description="We will send a 6-digit code, valid for 10 minutes."
           />
-          {otpSent ? (
+          {otpState.codeSent ? (
             <Field
               label="Code"
               name="code"
@@ -130,14 +132,16 @@ export function LoginForm(props: LoginFormProps) {
               description="The code can only be used once."
             />
           ) : null}
-          <Submit pending={pending} label={otpSent ? "Verify code" : "Send code"} />
+          <SubmitButton
+            label={otpState.codeSent ? "Verify code" : "Send code"}
+            pending={otpPending}
+          />
+          {otpState.message ? (
+            <p role="status" className="text-sm text-neutral-700 dark:text-neutral-300">
+              {otpState.message}
+            </p>
+          ) : null}
         </form>
-      ) : null}
-
-      {message ? (
-        <p role="status" className="mt-4 text-sm text-neutral-700 dark:text-neutral-300">
-          {message}
-        </p>
       ) : null}
 
       {props.githubEnabled ? (
@@ -173,6 +177,24 @@ export function LoginForm(props: LoginFormProps) {
   );
 }
 
+function SubmitButton({
+  label,
+  pending,
+}: {
+  readonly label: string;
+  readonly pending: boolean;
+}) {
+  return (
+    <button
+      type="submit"
+      disabled={pending}
+      className="w-full rounded-md bg-henna-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-henna-700 disabled:opacity-60"
+    >
+      {pending ? "Working…" : label}
+    </button>
+  );
+}
+
 function Field(props: {
   readonly label: string;
   readonly name: string;
@@ -201,18 +223,6 @@ function Field(props: {
         <span className="mt-1 block text-xs text-neutral-500">{props.description}</span>
       ) : null}
     </label>
-  );
-}
-
-function Submit({ pending, label }: { readonly pending: boolean; readonly label: string }) {
-  return (
-    <button
-      type="submit"
-      disabled={pending}
-      className="w-full rounded-md bg-henna-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-henna-700 disabled:opacity-60"
-    >
-      {pending ? "Working…" : label}
-    </button>
   );
 }
 

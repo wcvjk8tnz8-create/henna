@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useTransition } from "react";
-import { registerWithPassword } from "./actions";
+import { useActionState } from "react";
+import { initialRegisterState, registerAction } from "./actions";
 
 export interface RegisterFormProps {
   readonly passwordMinLength: number;
@@ -11,20 +11,19 @@ export interface RegisterFormProps {
 }
 
 export function RegisterForm(props: RegisterFormProps) {
-  const [pending, startTransition] = useTransition();
-  const [message, setMessage] = useState<string | null>(null);
-
-  function onSubmit(formData: FormData) {
-    setMessage(null);
-    startTransition(async () => {
-      const result = await registerWithPassword(formData);
-      // On success the action redirects, so anything here is a rejection.
-      setMessage(result.message);
-    });
-  }
+  /**
+   * The form posts straight to the Server Action.
+   *
+   * It previously went through a client wrapper (`onSubmit` → `startTransition`
+   * → `await action()`), which meant the button did nothing at all whenever
+   * JavaScript had not loaded or hydration had not finished. Binding the Server
+   * Action directly means the browser can submit the form natively, with no JS,
+   * and `useActionState` layers the error message back on once it has.
+   */
+  const [state, formAction, pending] = useActionState(registerAction, initialRegisterState);
 
   return (
-    <form action={onSubmit} className="mt-8 space-y-4">
+    <form action={formAction} className="mt-8 space-y-4">
       <Field label="Email" name="email" type="email" autoComplete="username" required />
       <Field
         label="Password"
@@ -33,9 +32,11 @@ export function RegisterForm(props: RegisterFormProps) {
         autoComplete="new-password"
         required
         minLength={props.passwordMinLength}
-        description={props.requireComplexity
-          ? `At least ${props.passwordMinLength} characters, with a letter, a number and a symbol.`
-          : `At least ${props.passwordMinLength} characters.`}
+        description={
+          props.requireComplexity
+            ? `At least ${props.passwordMinLength} characters, with a letter, a number and a symbol.`
+            : `At least ${props.passwordMinLength} characters.`
+        }
       />
       <Field
         label="Confirm password"
@@ -61,9 +62,9 @@ export function RegisterForm(props: RegisterFormProps) {
         {pending ? "Creating…" : "Create account"}
       </button>
 
-      {message ? (
+      {state.message ? (
         <p role="alert" className="text-sm text-red-700 dark:text-red-300">
-          {message}
+          {state.message}
         </p>
       ) : null}
     </form>

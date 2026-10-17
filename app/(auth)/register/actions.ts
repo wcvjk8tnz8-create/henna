@@ -25,10 +25,16 @@ import { parseInput, registrationSchema, formDataToObject } from "@/lib/validati
  * produce an administrator.
  */
 
-export interface RegisterResult {
-  readonly ok: boolean;
-  readonly message: string;
+/**
+ * Shape required by `useActionState`: the previous state goes in, the new state
+ * comes out. The form posts to the Server Action directly rather than through a
+ * client wrapper, so it still submits when JavaScript has not loaded.
+ */
+export interface RegisterState {
+  readonly message: string | null;
 }
+
+export const initialRegisterState: RegisterState = { message: null };
 
 const REGISTRATION_RULES = [
   { scope: "register:ip", limit: 10, windowSeconds: 3600, blockSeconds: 3600 },
@@ -54,10 +60,13 @@ const PASSWORD_REASONS: Record<string, (min: number) => string> = {
   "no-symbol": () => "Include at least one symbol.",
 };
 
-export async function registerWithPassword(formData: FormData): Promise<RegisterResult> {
+export async function registerAction(
+  _previous: RegisterState,
+  formData: FormData,
+): Promise<RegisterState> {
   const parsed = parseInput(registrationSchema, formDataToObject(formData));
   if (!parsed.ok) {
-    return { ok: false, message: parsed.issues[0] ?? "Check the details and try again." };
+    return { message: parsed.issues[0] ?? "Check the details and try again." };
   }
 
   const ctx = await context();
@@ -80,7 +89,6 @@ export async function registerWithPassword(formData: FormData): Promise<Register
         userAgentHash: ctx.userAgentHash,
       });
       return {
-        ok: false,
         message: `Too many attempts. Try again in ${verdict.retryAfterSeconds ?? 60} seconds.`,
       };
     }
@@ -92,7 +100,11 @@ export async function registerWithPassword(formData: FormData): Promise<Register
     requireComplexity: settings.passwordRequireComplexity,
   });
   if (!policy.ok) {
-    return { ok: false, message: PASSWORD_REASONS[policy.reason]?.(settings.passwordMinLength) ?? "That password does not meet the policy." };
+    return {
+      message:
+        PASSWORD_REASONS[policy.reason]?.(settings.passwordMinLength) ??
+        "That password does not meet the policy.",
+    };
   }
 
   const decision = await evaluateRegistration(parsed.value.email);
@@ -106,7 +118,7 @@ export async function registerWithPassword(formData: FormData): Promise<Register
       ipHash: ctx.ipHash,
       userAgentHash: ctx.userAgentHash,
     });
-    return { ok: false, message: decision.reason };
+    return { message: decision.reason };
   }
 
   const passwordHash = await hashPassword(parsed.value.password);
@@ -119,7 +131,7 @@ export async function registerWithPassword(formData: FormData): Promise<Register
     .from(users)
     .where(eq(users.email, parsed.value.email.trim().toLowerCase()));
   if (existing.length > 0) {
-    return { ok: false, message: "That address is already registered." };
+    return { message: "That address is already registered." };
   }
 
   try {
@@ -132,7 +144,7 @@ export async function registerWithPassword(formData: FormData): Promise<Register
     });
   } catch {
     // Almost always the unique index: someone else claimed it first.
-    return { ok: false, message: "That address is already registered." };
+    return { message: "That address is already registered." };
   }
 
   await writeAudit({
