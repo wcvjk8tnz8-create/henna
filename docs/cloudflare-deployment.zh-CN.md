@@ -29,23 +29,25 @@ Fork `https://github.com/wcvjk8tnz8-create/henna`。Cloudflare 从**你的 fork*
 
 ### 构建与部署命令
 
-这两个字段决定部署能不能成功。请明确填写：
-
 | 字段 | 值 |
 | --- | --- |
-| Build command | `npm run cf:build` |
+| Build command | `npm run build` |
 | Deploy command | `npx wrangler deploy` |
 
-**只填 `npm run build` 是不够的。** 它执行的是 `next build`，只产出普通的 Next.js
-结果 —— 随后 `wrangler deploy` 会失败：
+`npm run build` **就是** OpenNext 构建。它执行 `opennextjs-cloudflare build`，
+先做 Next 构建，再把结果编译进 `.open-next/` —— 也就是 `wrangler.jsonc` 里
+`main` 指向的目录，部署步骤找的就是它。
+
+这一点很关键，因为直觉上该用的 `next build` 只会产出普通的 Next.js 结果，
+根本不生成 `.open-next/`。然后部署就会失败：
 
 ```
 ERROR Could not find compiled Open Next config, did you run the build command?
 ```
 
-`npm run cf:build` 执行的是 `opennextjs-cloudflare build`，它会先做 Next 构建，
-再把结果编译进 `.open-next/` —— 也就是 `wrangler.jsonc` 里 `main` 指向的目录。
-部署步骤找的就是这个目录。
+如果你部署到 Node 而不是 Workers，请用 `npm run build:node`（即普通的
+`next build --turbopack`）。不存在递归：`opennextjs-cloudflare build` 会去调
+Next 构建，不是反过来。
 
 ### 3. 添加三个变量
 
@@ -163,7 +165,7 @@ CI/CD 路径用的；一键部署走的是 Cloudflare 自己的构建系统，�
 
 | 设置 | 值 |
 | --- | --- |
-| Build command | `npx opennextjs-cloudflare build` |
+| Build command | `npm run build` |
 | Deploy command | `npx wrangler deploy` |
 
 ### 首次登录

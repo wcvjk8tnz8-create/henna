@@ -31,23 +31,26 @@ Click **Deploy**.
 
 ### Build and deploy commands
 
-These two fields decide whether a deploy works at all. Set them explicitly:
-
 | Field | Value |
 | --- | --- |
-| Build command | `npm run cf:build` |
+| Build command | `npm run build` |
 | Deploy command | `npx wrangler deploy` |
 
-**`npm run build` is not enough.** It runs `next build`, which produces a normal
-Next.js output — and then `wrangler deploy` fails with:
+`npm run build` **is** the OpenNext build. It runs `opennextjs-cloudflare build`,
+which performs the Next build and then compiles the result into `.open-next/` —
+the directory `wrangler.jsonc` points `main` at, and the one the deploy step
+looks for.
+
+This matters because the obvious choice, plain `next build`, produces a normal
+Next.js output and no `.open-next/` at all. The deploy then fails with:
 
 ```
 ERROR Could not find compiled Open Next config, did you run the build command?
 ```
 
-`npm run cf:build` runs `opennextjs-cloudflare build`, which performs the Next
-build *and* compiles the result into `.open-next/` — the directory
-`wrangler.jsonc` points `main` at. That step is what the deploy step looks for.
+If you deploy to Node instead of Workers, use `npm run build:node`
+(plain `next build --turbopack`). There is no recursion: `opennextjs-cloudflare
+build` invokes the Next build, not the other way round.
 
 ### 3. Add the three variables
 
@@ -178,7 +181,7 @@ it. Either ignore the red check, or disable Actions in the fork
 
 | Setting | Value |
 | --- | --- |
-| Build command | `npm run cf:build` |
+| Build command | `npm run build` |
 | Deploy command | `npx wrangler deploy` |
 
 ### First sign-in
