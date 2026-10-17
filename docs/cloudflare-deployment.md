@@ -36,12 +36,17 @@ Click **Deploy**.
 | Name | Type | Value |
 | --- | --- | --- |
 | `DOMAIN` | JSON | `["example.com"]` — a JSON array, even for one domain |
-| `ADMIN` | Text | Your email address; this becomes the first administrator |
+| `ADMIN` | Secret | Your email address; this becomes the first administrator |
 | `jwt_secret` | Secret | Any random letters and digits, no punctuation |
 
 ```bash
 openssl rand -hex 24    # paste the output as jwt_secret
 ```
+
+All three go in as **Secrets**, so they are encrypted at rest. There is no
+`vars` block in `wrangler.jsonc`; if the deploy dialog shows a second group of
+the same three names, that is a stale copy from an earlier deploy. Delete it —
+these values should have exactly one source of truth.
 
 `DOMAIN` must be **JSON**, not text: a bare `example.com` will be rejected at
 boot. `jwt_secret` accepts letters and digits only — no punctuation, because

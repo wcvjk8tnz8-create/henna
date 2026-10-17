@@ -34,8 +34,12 @@ Fork `https://github.com/wcvjk8tnz8-create/henna`。Cloudflare 从**你的 fork*
 | 名称 | 类型 | 值 |
 | --- | --- | --- |
 | `DOMAIN` | JSON | `["example.com"]` —— 即使只有一个域名也要写成数组 |
-| `ADMIN` | 文本 | 你的邮箱，它会成为第一个管理员 |
+| `ADMIN` | 机密 | 你的邮箱，它会成为第一个管理员 |
 | `jwt_secret` | 机密 | 任意随机字母与数字，不含标点 |
+
+三个都添加为 **机密（Secret）**，静态加密。`wrangler.jsonc` 里没有 `vars` 块；
+如果部署对话框里出现第二组同样的三个名字，那是之前部署留下的旧值，删掉它 ——
+这些值应该只有一处来源。
 
 ```bash
 openssl rand -hex 24    # 输出作为 jwt_secret

@@ -9,33 +9,23 @@
   // Henna must never cache authenticated responses or mail-related assets.
   "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
 
-  // THREE variables. That is the entire deployment configuration.
+  // No `vars` block, on purpose.
   //
-  // Fill them in the Cloudflare dashboard after the first deploy
-  // (Settings → Variables and Secrets → Add), or override them here. Everything
-  // else — GitHub OAuth, Resend, object storage, TOTP policy, registration
-  // mode — is configured in /admin/settings once you are signed in.
+  // Henna needs only DOMAIN, ADMIN and jwt_secret, and they are entered once in
+  // the dashboard: Worker → Settings → Variables and Secrets → Add. Declaring
+  // them here as well makes the deploy dialog show two groups of the same three
+  // names — one plaintext, one encrypted — which is confusing and invites
+  // editing the wrong one. One place, one source of truth.
   //
-  // jwt_secret is listed as an empty placeholder on purpose: put the real value
-  // in the dashboard, not in this file, so it never reaches the repository.
-  "vars": {
-    // Mail domains this instance serves, as a JSON array.
-    "DOMAIN": "[\"example.com\"]",
-    // This address bootstraps the first administrator.
-    "ADMIN": "root@example.com",
-    // Session signing secret: letters and digits only, no punctuation.
-    // Any length works; `openssl rand -hex 24` is recommended because this
-    // value also seeds the credential key when HENNA_CREDENTIAL_KEY is unset.
-    // openssl rand -hex 24
-    "jwt_secret": ""
-  },
-
-  // Nothing else is needed. Specifically NOT needed:
+  // Add them as *Secrets* (encrypted), not plain text:
+  //   DOMAIN       JSON value, e.g. ["example.com"]
+  //   ADMIN        your email; this becomes the first administrator
+  //   jwt_secret   random letters and digits, any length (openssl rand -hex 24)
+  //
+  // Nothing else is needed:
   //   HENNA_CREDENTIAL_KEY — derived from jwt_secret by HKDF when absent.
-  //   GITHUB_CLIENT_ID / GITHUB_CLIENT_SECRET — /admin/settings.
-  //   RESEND_API_KEY / HENNA_EMAIL_FROM — /admin/settings.
-  //   HENNA_REGISTRATION_MODE / HENNA_TOTP_POLICY — /admin/settings, and both
-  //     have safe defaults (closed, admin-only).
+  //   GitHub OAuth, Resend/Brevo/Mailjet, object storage — /admin/settings.
+  //   Registration mode and TOTP policy — /admin/settings, safe defaults.
 
   // Database. Declared by NAME, not by id: Cloudflare creates the D1 database on
   // first deploy, so there is no id to copy and nothing to paste here.

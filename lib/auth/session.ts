@@ -24,9 +24,11 @@ import { randomBytesOf, toBase64Url } from "@/lib/crypto/random";
  * against the database through the DAL — the JWT never grants access by itself.
  */
 
-export const ACCESS_COOKIE = "henna_session";
-export const REFRESH_COOKIE = "henna_refresh";
-export const PENDING_MFA_COOKIE = "henna_pending_mfa";
+/**
+ * Re-exported from `lib/auth/cookies.ts`, which exists so Edge middleware can
+ * name these cookies without importing the data layer.
+ */
+export { ACCESS_COOKIE, REFRESH_COOKIE, PENDING_MFA_COOKIE } from "./cookies";
 
 const ISSUER = "henna";
 const AUDIENCE = "henna-web";
