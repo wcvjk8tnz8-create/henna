@@ -9,7 +9,7 @@
   },
   "scripts": {
     "dev": "next dev",
-    "build": "opennextjs-cloudflare build",
+    "build": "node scripts/build.mjs",
     "start": "next start",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
@@ -20,9 +20,9 @@
     "test:e2e": "playwright test",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "deploy": "opennextjs-cloudflare build && wrangler deploy",
-    "preview": "opennextjs-cloudflare build && wrangler dev",
-    "cf:build": "opennextjs-cloudflare build",
+    "deploy": "node scripts/build.mjs && wrangler deploy",
+    "preview": "node scripts/build.mjs && wrangler dev",
+    "cf:build": "node scripts/build.mjs",
     "cf:deploy": "wrangler deploy",
     "cf:typegen": "wrangler types",
     "build:node": "next build --turbopack"

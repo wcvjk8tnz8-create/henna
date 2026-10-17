@@ -36,21 +36,30 @@ Click **Deploy**.
 | Build command | `npm run build` |
 | Deploy command | `npx wrangler deploy` |
 
-`npm run build` **is** the OpenNext build. It runs `opennextjs-cloudflare build`,
-which performs the Next build and then compiles the result into `.open-next/` —
-the directory `wrangler.jsonc` points `main` at, and the one the deploy step
-looks for.
+There is a trap here worth explaining, because it is not obvious and it fails
+loudly: **`opennextjs-cloudflare build` does not run `next build` directly — it
+runs the project's own `build` script.** So setting `"build":
+"opennextjs-cloudflare build"` makes it call itself, and the log fills with
+repeated `OpenNext — Cloudflare build` banners until the build is killed.
 
-This matters because the obvious choice, plain `next build`, produces a normal
-Next.js output and no `.open-next/` at all. The deploy then fails with:
+`npm run build` therefore runs `scripts/build.mjs`, which breaks the cycle with
+a guard variable:
+
+- at the top level it runs `opennextjs-cloudflare build`, setting
+  `HENNA_OPENNEXT_CHILD=1` for the child;
+- invoked *as* that child, it sees the flag and runs plain `next build`
+  `--turbopack` instead — never calling back into OpenNext.
+
+The result is one command that works in the dashboard, in CI, and when OpenNext
+invokes it internally. `npm run build:node` runs the plain Next build directly,
+for self-hosting on Node where `.open-next/` is not wanted.
+
+The other failure mode is the opposite one: a plain `next build` produces no
+`.open-next/`, and the deploy then fails with
 
 ```
 ERROR Could not find compiled Open Next config, did you run the build command?
 ```
-
-If you deploy to Node instead of Workers, use `npm run build:node`
-(plain `next build --turbopack`). There is no recursion: `opennextjs-cloudflare
-build` invokes the Next build, not the other way round.
 
 ### 3. Add the three variables
 

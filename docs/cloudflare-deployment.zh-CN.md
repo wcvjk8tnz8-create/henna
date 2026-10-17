@@ -34,20 +34,27 @@ Fork `https://github.com/wcvjk8tnz8-create/henna`。Cloudflare 从**你的 fork*
 | Build command | `npm run build` |
 | Deploy command | `npx wrangler deploy` |
 
-`npm run build` **就是** OpenNext 构建。它执行 `opennextjs-cloudflare build`，
-先做 Next 构建，再把结果编译进 `.open-next/` —— 也就是 `wrangler.jsonc` 里
-`main` 指向的目录，部署步骤找的就是它。
+这里有个坑值得说清楚，因为它不直观而且失败得很显眼：**`opennextjs-cloudflare build`
+并不直接执行 `next build`，它执行的是项目自己的 `build` 脚本。** 所以把
+`"build"` 设成 `opennextjs-cloudflare build` 会让它调用自己 —— 日志里
+`OpenNext — Cloudflare build` 的横幅不断重复，直到构建被杀掉。
 
-这一点很关键，因为直觉上该用的 `next build` 只会产出普通的 Next.js 结果，
-根本不生成 `.open-next/`。然后部署就会失败：
+因此 `npm run build` 走的是 `scripts/build.mjs`，用一个守卫变量切断循环：
+
+- 顶层调用时执行 `opennextjs-cloudflare build`，并给子进程设
+  `HENNA_OPENNEXT_CHILD=1`；
+- 被**作为**那个子进程调用时，它看到该标志，改跑普通的 `next build
+  --turbopack`，绝不回调 OpenNext。
+
+结果是同一个命令在控制台、CI、以及 OpenNext 内部调用时都能正常工作。
+`npm run build:node` 直接跑普通 Next 构建，用于 Node 自托管 —— 那种场景不需要
+`.open-next/`。
+
+另一种失败正好相反：单纯的 `next build` 不产出 `.open-next/`，部署会失败并报
 
 ```
 ERROR Could not find compiled Open Next config, did you run the build command?
 ```
-
-如果你部署到 Node 而不是 Workers，请用 `npm run build:node`（即普通的
-`next build --turbopack`）。不存在递归：`opennextjs-cloudflare build` 会去调
-Next 构建，不是反过来。
 
 ### 3. 添加三个变量
 
