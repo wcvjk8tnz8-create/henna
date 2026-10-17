@@ -44,7 +44,7 @@ export type DeliveryDecision =
 export function normaliseAddress(raw: string): string {
   const trimmed = raw.trim();
   const angled = trimmed.match(/<([^>]+)>/);
-  const address = (angled ? angled[1] : trimmed).trim().toLowerCase();
+  const address = (angled?.[1] ?? trimmed).trim().toLowerCase();
   return address;
 }
 
@@ -136,7 +136,10 @@ export async function createMailbox(
       ownerUserId,
       kind: options.forwardTo ? "alias" : "inbox",
       forwardTo: options.forwardTo ?? null,
-      enabled: true,
+      // Both dialects store this as an integer column (0/1), not a native
+      // boolean: SQLite has no boolean type, and the DAL is type-checked
+      // against the PostgreSQL schema, so the two must agree on the shape.
+      enabled: 1,
     })
     .returning();
 
@@ -165,7 +168,7 @@ export async function assignMailbox(
 
 export async function setMailboxEnabled(mailboxId: string, enabled: boolean): Promise<void> {
   const db = getDb();
-  await db.update(mailboxes).set({ enabled }).where(eq(mailboxes.id, mailboxId));
+  await db.update(mailboxes).set({ enabled: enabled ? 1 : 0 }).where(eq(mailboxes.id, mailboxId));
 }
 
 /** The addresses a user owns, for the DAL guard on reading a message. */
