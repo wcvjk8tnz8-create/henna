@@ -133,6 +133,101 @@ async function runBootstrap(): Promise<void> {
 }
 
 /**
+ * Split a SQL script into single statements, and apply the D1 schema.
+ *
+ * Re-exported from `db/d1-schema.ts`, which deliberately has no `pg` import —
+ * see the note there.
+ */
+export { D1_SCHEMA_SQL, splitSqlStatements, applyD1Schema } from "./d1-schema";
+
+export function getDb(): Database {
+  if (db !== null) return db;
+
+  if (usesD1()) {
+    const binding = getD1Binding();
+    if (!binding) {
+      throw new DatabaseConfigError(
+        "HENNA_DB_KIND=d1 was requested but no D1 binding named DB is present. Add it to wrangler.jsonc.",
+      );
+    }
+    db = drizzleD1(binding as unknown as Parameters<typeof drizzleD1>[0], {
+      schema: d1Schema,
+    }) as unknown as Database;
+    return db;
+  }
+
+  const connectionString = resolveConnectionString();
+  if (!connectionString.trim()) {
+    throw new DatabaseConfigError(
+      "No database configured. Provide DATABASE_URL, bind a D1 database named DB, or set a Hyperdrive config.",
+    );
+  }
+
+  const runtime = detectRuntime();
+  pool = new Pool({
+    connectionString,
+    max: runtime === "workers-pg" ? 5 : 10,
+    idleTimeoutMillis: runtime === "workers-pg" ? 10_000 : 30_000,
+    connectionTimeoutMillis: 10_000,
+    // Hyperdrive terminates TLS at the edge; on Node.js we require TLS unless
+    // the host is loopback.
+    ssl:
+      connectionString.includes("localhost") || connectionString.includes("127.0.0.1")
+        ? undefined
+        : { rejectUnauthorized: true },
+  });
+
+  db = drizzlePg(pool, { schema: pgSchema });
+  return db;
+}
+
+/**
+ * Create the schema if it does not exist yet.
+ *
+ * This is what makes the one-click deployment work: there is no `psql` on
+ * Cloudflare, and asking someone to run a CLI command defeats the point of a
+ * dashboard deploy. Every statement is `IF NOT EXISTS`, so this is idempotent
+ * and safe to call on every cold start; a `_schema_migrations` row records that
+ * it has been done.
+ *
+ * Cached in a promise, so concurrent requests during a cold start share one run.
+ */
+export async function ensureSchema(): Promise<void> {
+  if (bootstrap !== null) return bootstrap;
+  bootstrap = runBootstrap().catch((error: unknown) => {
+    // Allow a later request to retry rather than caching the failure forever.
+    bootstrap = null;
+    throw error;
+  });
+  return bootstrap;
+}
+
+async function runBootstrap(): Promise<void> {
+  if (!usesD1()) return;
+  const binding = getD1Binding();
+  if (!binding) return;
+
+  await binding.prepare(
+    "CREATE TABLE IF NOT EXISTS _schema_migrations (name TEXT PRIMARY KEY, applied_at INTEGER NOT NULL)",
+  ).run();
+
+  const applied = await binding
+    .prepare("SELECT name FROM _schema_migrations WHERE name = '0000_init'")
+    .all();
+  const rows = (applied.results ?? []) as Array<{ name?: string }>;
+  if (rows.length > 0) return;
+
+  const statements = splitSqlStatements(D1_SCHEMA_SQL);
+  // D1 limits a batch to 100 statements; the schema is well under that.
+  await binding.batch(statements.map((sql) => binding.prepare(sql)) as unknown[]);
+  await binding
+    .prepare(
+      "INSERT OR IGNORE INTO _schema_migrations (name, applied_at) VALUES ('0000_init', ?)",
+    )
+    .run();
+}
+
+/**
  * Split a SQL script into single statements.
  *
  * Naive splitting is safe here because the schema script contains no

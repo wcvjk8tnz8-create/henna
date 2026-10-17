@@ -92,7 +92,7 @@ you, and asks for **three values**. That is the whole setup — there is no
 | --- | --- |
 | `DOMAIN` | JSON array of the mail domains you serve, e.g. `["example.com"]` |
 | `ADMIN` | Your email address. This becomes the first administrator. |
-| `jwt_secret` | Random letters and digits, 32+ characters |
+| `jwt_secret` | Any random letters and digits, no punctuation |
 
 ```bash
 openssl rand -hex 24    # paste the output as jwt_secret

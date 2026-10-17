@@ -125,14 +125,20 @@ describe("jwt_secret", () => {
   });
 
   it("rejects special characters so CI secrets need no quoting", () => {
-    for (const bad of ["abc-def", "abc_def", "abc!def", "abc def", "abc/def", "short"]) {
+    for (const bad of ["abc-def", "abc_def", "abc!def", "abc def", "abc/def"]) {
       expect(jwtSecretSchema.safeParse(bad).success).toBe(false);
     }
   });
 
-  it("requires at least 32 characters", () => {
-    expect(jwtSecretSchema.safeParse("a".repeat(31)).success).toBe(false);
-    expect(jwtSecretSchema.safeParse("a".repeat(32)).success).toBe(true);
+  it("accepts a short secret — length is documented, not enforced", () => {
+    // Deliberate: `jwt_secret` also seeds the credential key, so a short value
+    // is genuinely weaker, but rejecting it turns "paste anything and deploy"
+    // into a support question. The docs recommend `openssl rand -hex 24`.
+    expect(jwtSecretSchema.parse("abc123")).toBe("abc123");
+  });
+
+  it("rejects an empty secret", () => {
+    expect(() => jwtSecretSchema.parse("")).toThrow();
   });
 });
 

@@ -85,7 +85,7 @@ Cloudflare 会 fork 本仓库，并**自动**为你创建 D1 数据库与 R2 存
 | --- | --- |
 | `DOMAIN` | 你要服务的邮件域名，JSON 数组，如 `["example.com"]` |
 | `ADMIN` | 你的邮箱，它会成为第一个管理员 |
-| `jwt_secret` | 随机字母与数字，32 位以上 |
+| `jwt_secret` | 任意随机字母与数字，不含标点 |
 
 ```bash
 openssl rand -hex 24    # 输出作为 jwt_secret

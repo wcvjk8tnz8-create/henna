@@ -5,7 +5,7 @@
 
 DOMAIN=["example.com"]
 ADMIN=root@example.com
-jwt_secret=replaceWithAtLeast32LettersAndDigits
+jwt_secret=anyRandomLettersAndDigits
 
 # --- Not needed -------------------------------------------------------------
 # HENNA_CREDENTIAL_KEY  derived from jwt_secret by HKDF when absent

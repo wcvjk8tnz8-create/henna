@@ -29,7 +29,7 @@ start and tells you exactly which one is wrong.
 | --- | --- | --- |
 | `DOMAIN` | JSON array, e.g. `["example.com","example2.com"]` | Decides which addresses this instance serves |
 | `ADMIN` | Email address | Bootstraps the first administrator |
-| `jwt_secret` | 32+ characters, letters and digits only | Signs session tokens |
+| `jwt_secret` | Letters and digits only, no punctuation | Signs session tokens. Also seeds the credential key when `HENNA_CREDENTIAL_KEY` is unset — `openssl rand -hex 24` is recommended, though not enforced. |
 | `HENNA_CREDENTIAL_KEY` | base64 of 32 random bytes (comma-separated list during rotation) | Encrypts stored secrets |
 
 **Instance configuration — database-backed, editable at `/admin/settings`.**
@@ -46,7 +46,7 @@ administrator session, because changing them requires a redeploy.
 # --- Root (required) --------------------------------------------------------
 DOMAIN=["example.com"]
 ADMIN=root@example.com
-jwt_secret=aRandomStringOfLettersAndDigitsAtLeast32Long
+jwt_secret=anyRandomLettersAndDigits
 HENNA_CREDENTIAL_KEY=base64-of-32-random-bytes
 
 # --- Database ---------------------------------------------------------------

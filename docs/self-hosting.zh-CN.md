@@ -28,7 +28,7 @@ Henna 有意把配置分成两层。
 | --- | --- | --- |
 | `DOMAIN` | JSON 数组，如 `["example.com","example2.com"]` | 决定本实例服务哪些域名 |
 | `ADMIN` | 邮箱地址 | 引导第一个管理员 |
-| `jwt_secret` | 32 位以上，仅字母和数字 | 会话令牌签名 |
+| `jwt_secret` | 仅字母和数字，不含标点 | 会话令牌签名；未设 `HENNA_CREDENTIAL_KEY` 时也作为凭证密钥的种子。建议 `openssl rand -hex 24`，但不强制。 |
 | `HENNA_CREDENTIAL_KEY` | 32 随机字节的 base64（轮换时用逗号分隔多个） | 加密存储的密钥 |
 
 **实例配置 —— 存数据库，管理员可在 `/admin/settings` 修改。**
@@ -44,7 +44,7 @@ Henna 有意把配置分成两层。
 # --- 根配置（必需） --------------------------------------------------------
 DOMAIN=["example.com"]
 ADMIN=root@example.com
-jwt_secret=aRandomStringOfLettersAndDigitsAtLeast32Long
+jwt_secret=anyRandomLettersAndDigits
 HENNA_CREDENTIAL_KEY=base64-of-32-random-bytes
 
 # --- 数据库 ---------------------------------------------------------------

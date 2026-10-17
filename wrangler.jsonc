@@ -23,7 +23,9 @@
     "DOMAIN": "[\"example.com\"]",
     // This address bootstraps the first administrator.
     "ADMIN": "root@example.com",
-    // Session signing secret: letters and digits only, 32+ characters.
+    // Session signing secret: letters and digits only, no punctuation.
+    // Any length works; `openssl rand -hex 24` is recommended because this
+    // value also seeds the credential key when HENNA_CREDENTIAL_KEY is unset.
     // openssl rand -hex 24
     "jwt_secret": ""
   },

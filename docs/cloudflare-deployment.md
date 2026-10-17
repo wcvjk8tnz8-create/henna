@@ -37,7 +37,7 @@ Click **Deploy**.
 | --- | --- | --- |
 | `DOMAIN` | JSON | `["example.com"]` — a JSON array, even for one domain |
 | `ADMIN` | Text | Your email address; this becomes the first administrator |
-| `jwt_secret` | Secret | Random letters and digits, 32+ characters |
+| `jwt_secret` | Secret | Any random letters and digits, no punctuation |
 
 ```bash
 openssl rand -hex 24    # paste the output as jwt_secret
@@ -98,7 +98,7 @@ values. There is no `wrangler.jsonc` to edit and no migration to run.
 | --- | --- |
 | `DOMAIN` | JSON array of the mail domains you serve, e.g. `["example.com"]` |
 | `ADMIN` | Your email address. This becomes the first administrator. |
-| `jwt_secret` | Random letters and digits, 32+ characters |
+| `jwt_secret` | Any random letters and digits, no punctuation |
 
 ```bash
 openssl rand -hex 24    # paste the output as jwt_secret

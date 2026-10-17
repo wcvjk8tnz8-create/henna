@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "license": "AGPL-3.0-or-later",
-  "description": "Henna — a security-first, self-hostable webmail frontend for Cloudflare Workers and Node.js.",
+  "description": "Henna \u2014 a security-first, self-hostable webmail frontend for Cloudflare Workers and Node.js.",
   "engines": {
     "node": ">=20.9.0"
   },
@@ -51,6 +51,7 @@
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.1",
     "drizzle-kit": "^0.31.11",
+    "sql.js": "^1.13.0",
     "tailwindcss": "^4.3.3",
     "typescript": "^5.9.3",
     "vitest": "^5.0.5",

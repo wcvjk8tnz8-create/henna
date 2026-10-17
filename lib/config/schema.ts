@@ -61,12 +61,25 @@ export const domainListSchema = z
       .min(1, "DOMAIN must contain at least one domain"),
   );
 
+/**
+ * Session/JWT signing secret.
+ *
+ * Any non-empty string of letters and digits. There is deliberately no length
+ * minimum: `jwt_secret` is also the seed the credential key is derived from, so
+ * a short value *is* weaker, but refusing to boot over it turns a
+ * "paste anything and click Deploy" flow into a support question. The
+ * documentation tells people to use `openssl rand -hex 24`; the code does not
+ * enforce it.
+ *
+ * "no special characters" is a real constraint, not a stylistic one: the value
+ * travels through CI secret stores, shell scripts and wrangler secret files
+ * where punctuation needs quoting, and a mis-quoted secret produces a
+ * confusing auth failure rather than an obvious error.
+ */
 export const jwtSecretSchema = z
   .string()
-  .min(32, "jwt_secret must be at least 32 characters")
+  .min(1, "jwt_secret must not be empty")
   .max(512)
-  // "no special characters" keeps the secret safe to inject through CI secret
-  // stores, shell scripts and wrangler secret files without quoting hazards.
   .regex(/^[A-Za-z0-9]+$/, "jwt_secret must contain only letters and digits (no special characters)");
 
 export const registrationModeSchema = z.enum(["closed", "invite-only", "allowlist"]);

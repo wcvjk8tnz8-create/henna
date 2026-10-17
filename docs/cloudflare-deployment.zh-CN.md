@@ -35,7 +35,7 @@ Fork `https://github.com/wcvjk8tnz8-create/henna`。Cloudflare 从**你的 fork*
 | --- | --- | --- |
 | `DOMAIN` | JSON | `["example.com"]` —— 即使只有一个域名也要写成数组 |
 | `ADMIN` | 文本 | 你的邮箱，它会成为第一个管理员 |
-| `jwt_secret` | 机密 | 随机字母与数字，32 位以上 |
+| `jwt_secret` | 机密 | 任意随机字母与数字，不含标点 |
 
 ```bash
 openssl rand -hex 24    # 输出作为 jwt_secret
@@ -92,7 +92,7 @@ shell 脚本。
 | --- | --- |
 | `DOMAIN` | 你要服务的邮件域名，JSON 数组，如 `["example.com"]` |
 | `ADMIN` | 你的邮箱，它会成为第一个管理员 |
-| `jwt_secret` | 随机字母与数字，32 位以上 |
+| `jwt_secret` | 任意随机字母与数字，不含标点 |
 
 ```bash
 openssl rand -hex 24    # 输出作为 jwt_secret

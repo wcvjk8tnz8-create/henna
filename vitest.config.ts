@@ -20,6 +20,17 @@ export default defineConfig({
       include: ["lib/**"],
       reporter: ["text", "lcov"],
     },
+    /**
+     * Unit tests exercise the D1 dialect unless a test overrides it.
+     *
+     * `db/schema.ts` picks its tables at module load, so this has to be set
+     * before the first import rather than inside a test. It matters for
+     * `d1-integration.test.ts`, which runs the real DAL against a real SQLite
+     * engine: the point of that file is to prove the D1 schema is a drop-in
+     * replacement for the PostgreSQL one, which is only true if the DAL is
+     * actually handed the D1 table objects.
+     */
+    env: { HENNA_DB_KIND: "d1" },
     // Security tests must not be flaky; run files in isolation by default.
     pool: "forks",
     testTimeout: 20_000,
