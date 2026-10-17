@@ -29,6 +29,26 @@ Worker lives in a subdirectory.
 
 Click **Deploy**.
 
+### Build and deploy commands
+
+These two fields decide whether a deploy works at all. Set them explicitly:
+
+| Field | Value |
+| --- | --- |
+| Build command | `npm run cf:build` |
+| Deploy command | `npx wrangler deploy` |
+
+**`npm run build` is not enough.** It runs `next build`, which produces a normal
+Next.js output — and then `wrangler deploy` fails with:
+
+```
+ERROR Could not find compiled Open Next config, did you run the build command?
+```
+
+`npm run cf:build` runs `opennextjs-cloudflare build`, which performs the Next
+build *and* compiles the result into `.open-next/` — the directory
+`wrangler.jsonc` points `main` at. That step is what the deploy step looks for.
+
 ### 3. Add the three variables
 
 *Worker → Settings → Variables and Secrets → Add*
@@ -54,7 +74,34 @@ the value travels through CI secret stores and shell scripts.
 
 Then **redeploy** so the Worker picks up the new values.
 
-### 4. Database and attachments are already done
+#### Two build warnings you can ignore
+
+The first successful build prints two notices that look like problems and are
+not:
+
+```
+⚠ No build cache found. Please configure build caching for faster rebuilds.
+Attention: Next.js now collects completely anonymous telemetry regarding usage.
+```
+
+**Build cache.** Cloudflare re-clones the repository for each build, so there is
+no cache to find. It is a speed warning only. If you deploy often, enable
+Cloudflare's build caching; a first-ever build always shows it.
+
+**Telemetry.** Both Next.js and Wrangler collect anonymous usage data by
+default. Neither sends environment variables, file contents, secrets or paths —
+but if you would rather not participate, set these as build-time environment
+variables in the dashboard:
+
+| Variable | Value | Disables |
+| --- | --- | --- |
+| `NEXT_TELEMETRY_DISABLED` | `1` | Next.js telemetry |
+| `DO_NOT_TRACK` | `1` | Wrangler telemetry (takes precedence over all other settings) |
+
+Add them under the same *Settings → Variables and Secrets* as the three root
+variables. They affect only the build, not the running Worker.
+
+## 4. Database and attachments are already done
 
 This is the one place Henna differs from Cloud Mail, and it is worth being
 explicit about, because the Cloud Mail instructions will tell you to create and
@@ -131,7 +178,7 @@ it. Either ignore the red check, or disable Actions in the fork
 
 | Setting | Value |
 | --- | --- |
-| Build command | `npx opennextjs-cloudflare build` |
+| Build command | `npm run cf:build` |
 | Deploy command | `npx wrangler deploy` |
 
 ### First sign-in

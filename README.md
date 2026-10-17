@@ -226,3 +226,24 @@ open a public issue for a live vulnerability.
 ## Licence
 
 AGPL-3.0-or-later. See [LICENSE](LICENSE).
+
+### Build and deploy commands
+
+These two fields decide whether a deploy works at all. Set them explicitly:
+
+| Field | Value |
+| --- | --- |
+| Build command | `npm run cf:build` |
+| Deploy command | `npx wrangler deploy` |
+
+**`npm run build` is not enough.** It runs `next build`, which produces a normal
+Next.js output — and then `wrangler deploy` fails with:
+
+```
+ERROR Could not find compiled Open Next config, did you run the build command?
+```
+
+`npm run cf:build` runs `opennextjs-cloudflare build`, which performs the Next
+build *and* compiles the result into `.open-next/` — the directory
+`wrangler.jsonc` points `main` at. That step is what the deploy step looks for.
+

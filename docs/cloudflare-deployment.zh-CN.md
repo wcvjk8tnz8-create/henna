@@ -27,6 +27,26 @@ Fork `https://github.com/wcvjk8tnz8-create/henna`。Cloudflare 从**你的 fork*
 
 点 **部署**。
 
+### 构建与部署命令
+
+这两个字段决定部署能不能成功。请明确填写：
+
+| 字段 | 值 |
+| --- | --- |
+| Build command | `npm run cf:build` |
+| Deploy command | `npx wrangler deploy` |
+
+**只填 `npm run build` 是不够的。** 它执行的是 `next build`，只产出普通的 Next.js
+结果 —— 随后 `wrangler deploy` 会失败：
+
+```
+ERROR Could not find compiled Open Next config, did you run the build command?
+```
+
+`npm run cf:build` 执行的是 `opennextjs-cloudflare build`，它会先做 Next 构建，
+再把结果编译进 `.open-next/` —— 也就是 `wrangler.jsonc` 里 `main` 指向的目录。
+部署步骤找的就是这个目录。
+
 ### 3. 添加三个变量
 
 *Worker → 设置 → 变量和机密 → 添加*
@@ -51,7 +71,30 @@ shell 脚本。
 
 然后**重新部署**一次，让 Worker 读到新值。
 
-### 4. 数据库和附件已经好了
+#### 两条可以放心忽略的构建提示
+
+首次成功构建会打印两条看起来像错误的提示，其实都不是：
+
+```
+⚠ No build cache found. Please configure build caching for faster rebuilds.
+Attention: Next.js now collects completely anonymous telemetry regarding usage.
+```
+
+**构建缓存。** Cloudflare 每次构建都会重新克隆仓库，所以没有缓存可找。这只影响速度。
+如果你部署频繁，可以开启 Cloudflare 的构建缓存；全新项目的首次构建必然会出现。
+
+**遥测。** Next.js 与 Wrangler 默认收集匿名使用数据。两者都不发送环境变量、文件内容、
+密钥或路径 —— 但如果你不想参与，可以在控制台把下面两个设为构建期环境变量：
+
+| 变量 | 值 | 作用 |
+| --- | --- | --- |
+| `NEXT_TELEMETRY_DISABLED` | `1` | 关闭 Next.js 遥测 |
+| `DO_NOT_TRACK` | `1` | 关闭 Wrangler 遥测（优先级高于其他所有设置） |
+
+和那三个根变量填在同一个 *设置 → 变量和机密* 里即可。它们只影响构建，不影响运行中的
+Worker。
+
+## 4. 数据库和附件已经好了
 
 这是 Henna 与 Cloud Mail 唯一实质性的差别，值得单独说清楚，因为 Cloud Mail 的
 教程会让你手动创建并绑定 D1：

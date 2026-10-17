@@ -24,7 +24,8 @@
     "preview": "opennextjs-cloudflare build && wrangler dev",
     "cf:build": "opennextjs-cloudflare build",
     "cf:deploy": "wrangler deploy",
-    "cf:typegen": "wrangler types"
+    "cf:typegen": "wrangler types",
+    "build:node": "next build --turbopack"
   },
   "dependencies": {
     "drizzle-orm": "^0.44.6",
