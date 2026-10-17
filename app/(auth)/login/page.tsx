@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { getPublicInstanceSettings } from "@/lib/config/settings";
 import { getMailDomains } from "@/lib/config/env";
 import { resolveSessionFromCookies } from "@/lib/dal/session";
+import { countUsers } from "@/lib/dal/registration";
 import { LoginForm } from "./login-form";
 
 /**
@@ -17,7 +18,11 @@ export const metadata = { title: "Sign in" };
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ readonly error?: string; readonly next?: string }>;
+  searchParams: Promise<{
+    readonly error?: string;
+    readonly next?: string;
+    readonly registered?: string;
+  }>;
 }) {
   const params = await searchParams;
 
@@ -39,6 +44,10 @@ export default async function LoginPage({
   const settings = boot.settings;
   const jar = await cookies();
 
+  // Offer registration only when it can succeed. On an unclaimed instance this
+  // is the only way in at all, so it must be visible there.
+  const canRegister = await canOfferRegistration(settings.registrationMode);
+
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center px-6 py-12">
       <div className="henna-enter">
@@ -54,6 +63,15 @@ export default async function LoginPage({
           >
             This instance could not read its settings, so only password sign-in is offered.
             <span className="mt-1 block font-mono text-xs opacity-80">{boot.problem}</span>
+          </p>
+        ) : null}
+
+        {params.registered ? (
+          <p
+            role="status"
+            className="mt-4 rounded-md border border-green-300 bg-green-50 px-3 py-2 text-sm text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-200"
+          >
+            Account created. Sign in with the password you just set.
           </p>
         ) : null}
 
@@ -74,10 +92,27 @@ export default async function LoginPage({
           emailOtpEnabled={settings.authMethods.includes("email_otp") && settings.resendConfigured}
           hasPendingMfa={Boolean(jar.get("henna_pending_mfa")?.value)}
           nextPath={params.next ?? "/inbox"}
+          canRegister={canRegister}
         />
       </div>
     </main>
   );
+}
+
+/**
+ * Whether the sign-in page should link to registration.
+ *
+ * A fresh instance has no accounts and therefore no way in, so the link is
+ * always offered there; otherwise it follows the configured mode.
+ */
+async function canOfferRegistration(mode: string): Promise<boolean> {
+  try {
+    if ((await countUsers()) === 0) return true;
+    return mode !== "closed";
+  } catch {
+    // Database unreadable: registration cannot work, so don't offer it.
+    return false;
+  }
 }
 
 /**

@@ -3,7 +3,6 @@ import { getDb } from "@/db";
 import { users, type User } from "@/db/schema";
 import { writeAudit } from "@/lib/audit/log";
 import { AUDIT_ACTIONS } from "@/lib/audit/events";
-import { getAdminEmail } from "@/lib/config/env";
 import type { Principal } from "./types";
 
 /**
@@ -74,39 +73,6 @@ export async function findUserByGithubId(githubUserId: string): Promise<User | n
   return row ?? null;
 }
 
-/**
- * Bootstrap the administrator account from the `ADMIN` root setting.
- *
- * Idempotent and safe to call on every boot: it only ever creates the account
- * when it does not exist yet, and it never changes an existing account's role.
- */
-export async function ensureBootstrapAdmin(): Promise<{ created: boolean; userId: string | null }> {
-  const email = getAdminEmail();
-  const existing = await findUserByEmail(email);
-  if (existing) {
-    return { created: false, userId: existing.id };
-  }
-
-  const db = getDb();
-  const [created] = await db
-    .insert(users)
-    .values({ email, role: "admin", emailVerifiedAt: new Date() })
-    .returning({ id: users.id });
-
-  if (!created) return { created: false, userId: null };
-
-  await writeAudit({
-    action: AUDIT_ACTIONS.ACCOUNT_CREATED,
-    result: "success",
-    actorId: created.id,
-    actorEmail: email,
-    actorRole: "admin",
-    resourceType: "account",
-    metadata: { source: "bootstrap-admin" },
-  });
-
-  return { created: true, userId: created.id };
-}
 
 /**
  * Change a user's role. An administrator cannot demote themselves — that would
@@ -234,6 +200,8 @@ export async function createUser(input: {
   readonly githubUserId?: string | null;
   readonly githubLogin?: string | null;
   readonly verified?: boolean;
+  /** Already hashed. Never pass a plaintext password here. */
+  readonly passwordHash?: string | null;
 }): Promise<User> {
   const db = getDb();
   const [row] = await db
@@ -244,6 +212,7 @@ export async function createUser(input: {
       githubUserId: input.githubUserId ?? null,
       githubLogin: input.githubLogin ?? null,
       emailVerifiedAt: input.verified ? new Date() : null,
+      passwordHash: input.passwordHash ?? null,
     })
     .returning();
 

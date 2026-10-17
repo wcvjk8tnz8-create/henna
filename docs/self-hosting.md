@@ -243,3 +243,22 @@ Switching providers does not break anything: the setting takes effect on the
 next send, and an incomplete configuration falls back to the bootstrap log path
 only while the instance has no verified users at all.
 
+
+### The first account
+
+A fresh instance has no way in until someone claims it. The `ADMIN` setting
+names the administrator's address but carries no credential, so the account has
+to be claimed with a password:
+
+1. Open `/register`.
+2. Enter **exactly** the address you set as `ADMIN`.
+3. Choose a password. That account becomes the administrator.
+
+While no account exists, this is the only address that can register — which is
+why the page says so. As soon as one account exists, registration follows
+`registrationMode` instead, and the `ADMIN` address has no special status: if it
+registers again it gets an ordinary `user` account.
+
+After registering you are sent to `/login` to sign in with the password you
+just set.
+

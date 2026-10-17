@@ -71,6 +71,24 @@ export const passwordLoginSchema = z.object({
 });
 export type PasswordLoginInput = z.infer<typeof passwordLoginSchema>;
 
+/**
+ * Registration.
+ *
+ * Deliberately has no `role` field: a request must never be able to name the
+ * role it wants. lib/dal/registration.ts decides that, and only bootstrap
+ * registration — where the address equals the configured ADMIN — yields an
+ * administrator.
+ */
+export const registrationSchema = z.object({
+  email: emailInput,
+  password: passwordInput,
+  confirm: passwordInput,
+}).refine((value) => value.password === value.confirm, {
+  message: "Passwords do not match.",
+  path: ["confirm"],
+});
+export type RegistrationInput = z.infer<typeof registrationSchema>;
+
 export const passwordResetRequestSchema = z.object({ email: emailInput });
 export const passwordResetConfirmSchema = z.object({
   email: emailInput,

@@ -11,6 +11,7 @@ export interface LoginFormProps {
   readonly emailOtpEnabled: boolean;
   readonly hasPendingMfa: boolean;
   readonly nextPath: string;
+  readonly canRegister: boolean;
 }
 
 type Mode = "password" | "email_otp";
@@ -154,6 +155,15 @@ export function LoginForm(props: LoginFormProps) {
             Continue with GitHub
           </a>
         </>
+      ) : null}
+
+      {props.canRegister ? (
+        <p className="mt-6 text-center text-sm text-neutral-600 dark:text-neutral-400">
+          No account yet?{" "}
+          <a href="/register" className="font-medium underline">
+            Create one
+          </a>
+        </p>
       ) : null}
 
       <p className="mt-6 text-xs text-neutral-500">

@@ -259,3 +259,22 @@ The other failure mode is the opposite one: a plain `next build` produces no
 ERROR Could not find compiled Open Next config, did you run the build command?
 ```
 
+
+### The first account
+
+A fresh instance has no way in until someone claims it. The `ADMIN` setting
+names the administrator's address but carries no credential, so the account has
+to be claimed with a password:
+
+1. Open `/register`.
+2. Enter **exactly** the address you set as `ADMIN`.
+3. Choose a password. That account becomes the administrator.
+
+While no account exists, this is the only address that can register — which is
+why the page says so. As soon as one account exists, registration follows
+`registrationMode` instead, and the `ADMIN` address has no special status: if it
+registers again it gets an ordinary `user` account.
+
+After registering you are sent to `/login` to sign in with the password you
+just set.
+
