@@ -1,0 +1,112 @@
+@import 'tailwindcss';
+
+/* ── Henna 设计令牌：暖赭 / 陶土 / 墨底，无冷色渐变 ───────────────── */
+@theme {
+  --color-sand-50: #faf6f1;
+  --color-sand-100: #f3ece4;
+  --color-sand-200: #e7dcd0;
+  --color-sand-300: #d3c4b4;
+
+  --color-henna-50: #fdf4f0;
+  --color-henna-100: #f9e4da;
+  --color-henna-200: #f0c4ae;
+  --color-henna-300: #e5a288;
+  --color-henna-400: #d1714f;
+  --color-henna-500: #b4462f;
+  --color-henna-600: #97381f;
+  --color-henna-700: #7a2c18;
+
+  --color-clay-400: #d99256;
+  --color-clay-500: #c97b3c;
+  --color-clay-600: #a9622b;
+
+  --color-ink-500: #57534e;
+  --color-ink-700: #292524;
+  --color-ink-800: #1f1b18;
+  --color-ink-900: #1c1917;
+
+  --color-jade-500: #3f7d63;
+  --color-jade-600: #2f6550;
+
+  --font-sans: 'Inter', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+
+  --radius-card: 14px;
+}
+
+@layer base {
+  html,
+  body,
+  #app {
+    height: 100%;
+  }
+  body {
+    @apply bg-sand-50 text-ink-900 font-sans antialiased;
+  }
+  ::selection {
+    @apply bg-henna-200 text-ink-900;
+  }
+}
+
+/* ── 自定义 utility（用 @utility 定义，才能被 @apply 引用） ───────── */
+@utility btn {
+  @apply inline-flex items-center justify-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-medium transition
+         disabled:cursor-not-allowed disabled:opacity-50;
+}
+
+@utility card {
+  @apply rounded-card border border-sand-200 bg-white shadow-[0_1px_2px_rgba(28,25,23,0.04)];
+}
+
+@utility input {
+  @apply w-full rounded-lg border border-sand-200 bg-white px-3 py-2 text-sm text-ink-900
+         placeholder:text-sand-300 focus:border-henna-400 focus:outline-none focus:ring-2 focus:ring-henna-100;
+}
+
+@utility label {
+  @apply mb-1 block text-xs font-medium text-ink-500;
+}
+
+@utility chip {
+  @apply inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium;
+}
+
+@utility nav-item {
+  @apply flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-ink-500 transition hover:bg-sand-100 hover:text-ink-900;
+}
+
+@utility tbl {
+  @apply w-full text-left text-sm;
+}
+
+@layer components {
+  .table {
+    @apply tbl;
+  }
+  .btn-primary {
+    @apply btn bg-henna-500 text-white hover:bg-henna-600 active:bg-henna-700;
+  }
+  .btn-ghost {
+    @apply btn border border-sand-200 bg-white text-ink-700 hover:bg-sand-100;
+  }
+  .btn-danger {
+    @apply btn border border-henna-200 bg-white text-henna-600 hover:bg-henna-50;
+  }
+  .chip-ok {
+    @apply chip bg-jade-500/10 text-jade-600;
+  }
+  .chip-warn {
+    @apply chip bg-clay-500/10 text-clay-600;
+  }
+  .chip-err {
+    @apply chip bg-henna-500/10 text-henna-600;
+  }
+  .nav-item-active {
+    @apply bg-henna-50 text-henna-600;
+  }
+  .table th {
+    @apply border-b border-sand-200 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-ink-500;
+  }
+  .table td {
+    @apply border-b border-sand-100 px-3 py-2.5;
+  }
+}

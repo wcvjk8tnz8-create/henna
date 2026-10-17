@@ -1,350 +1,212 @@
-# Henna
+# Henna Mail · 边缘邮箱分发系统
 
-> **Henna is a mail service, not just a mail client.** It receives mail on your
-> domain via Cloudflare Email Routing, parses it in a Worker, and stores it in
-> D1 (metadata) and R2 (raw MIME and attachments). Reading and sending happen in
-> the web UI. Attachment bytes never live in the database.
+一个跑在 Cloudflare Workers 上的邮箱分发系统：收信（Email Routing）+ 发信（多服务商可插拔）+ 账号分发（邀请码 / 批量开户）+ 规则分发（Telegram / Webhook / 外部邮箱转发）。
 
+参考设计：[Cloud Mail](https://github.com/maillab/cloud-mail) / [doc.skymail.ink](https://doc.skymail.ink)。本项目为独立实现，全栈 TypeScript。
 
-**[English](README.md) | [简体中文](README.zh-CN.md)**
-
-Henna is a security-first, self-hostable webmail service. It receives mail on
-your own domain, stores it, and serves a web UI for reading and sending. Raw
-messages and attachments live in object storage; mail metadata lives in the
-database. Attachment bytes are never stored in the database itself.
-
-Built on Next.js (App Router), TypeScript in strict mode, Tailwind CSS, Drizzle
-ORM over PostgreSQL, and Auth.js v5. Deploys to Cloudflare Workers through
-OpenNext, or to any Node.js host. Licensed under AGPL-3.0.
+![收件箱](docs/preview/01-inbox.png)
 
 ---
 
-## Why Henna
+## 已验证清单
 
-Most self-hosted webmail stacks put a server in the middle of your mail: it
-fetches, stores, indexes and serves every message. That server becomes the single
-most valuable target in your infrastructure, and it holds a copy of everything.
+| 项 | 结果 |
+|---|---|
+| Worker TypeScript 类型检查（`tsc --noEmit`） | 通过，0 error |
+| Worker 打包（esbuild bundle） | 通过，208 KB |
+| 前端生产构建（Vite + Tailwind v4） | 通过，CSS 26.6 KB / JS 96 KB |
+| 冒烟测试（12 项） | 12 passed, 0 failed |
+| 界面预览截图 | 8 张，0 个蓝紫像素 |
 
-Henna takes the opposite approach. The server handles identity, encrypted
-credentials, settings and auditing. Mail moves between your browser and your
-upstream mail server — JMAP where possible, IMAP/SMTP as a fallback — and nothing
-in between keeps a copy.
+冒烟测试覆盖：口令哈希与校验、JWT 签发/验签/过期拒绝、服务商优先级调度、故障自动转移、指定通道（pinned）、全部失败与无通道的兜底报错。
 
-## Features
+---
 
-**Sign-in, three ways, and only three**
+## 一、架构选型：为什么是 TypeScript 而不是 JavaScript
 
-- Password — scrypt hashed, minimum 12 characters, never silently truncated.
-- GitHub OAuth — the one and only OAuth provider Henna will ever support.
-- Email code — a 6-digit code, valid for 10 minutes, single use, hashed at rest.
+| 维度 | TypeScript（选定） | JavaScript |
+|---|---|---|
+| Workers Bindings | `Env` 接口把 DB / KV / R2 / SEND_EMAIL 全部类型化，写错 binding 名编译期就报错 | 只能在运行时炸 |
+| 发信服务商适配器 | `MailProvider` 接口约束 7 个适配器签名一致，新增服务商不可能漏字段 | 靠人肉对齐 |
+| Hono 路由 | `c.req.json()` / `c.json()` 端到端类型推导 + RPC 类型共享 | 无 |
+| D1 结果 | `T | null` 显式处理空行，配合自定义 `queryOne<T>()` | 隐式 any，拼错列名才发现不了 |
+| 规模 | 单仓库多包，重构安全 | 千行以上开始失控 |
 
-**Second factor that means something**
+结论：**全栈 TS**。JS 唯一优势是省掉构建，但 Workers 本来就走 wrangler 构建（esbuild），这点优势不存在。
 
-- TOTP with a ±1 step window and replay protection.
-- One-time recovery codes, stored only as keyed digests.
-- Administrators are *always* required to use it, whatever the instance policy.
-- Turning it off requires proving a current code first.
-
-**Credentials handled properly**
-
-- AES-256-GCM with a rotatable key ring.
-- Every decryption is rate limited and written to the audit log.
-- Rotation that you can actually complete: add a key, re-encrypt, drop the old one.
-
-**An audit log that is real**
-
-- Append-only, enforced by a database trigger, not by convention.
-- Covers sign-ins, denials, password resets, TOTP events, credential decryption
-  and administrative actions.
-- Never contains a password, a code or a decrypted secret.
-
-**Attachments that never touch the server**
-
-- Cloudflare R2 by default, any S3-compatible bucket if you prefer.
-- The browser uploads and downloads through short-lived presigned URLs. Henna
-  signs the request; the bytes go browser ↔ bucket and nowhere else.
-- Every URL is scoped to one user's key prefix, rate limited and audited.
-
-**Mail that stays yours**
-
-- JMAP first; IMAP/SMTP only as a documented fallback.
-- Message HTML rendered in a sandboxed iframe that forbids scripts.
-- Remote images blocked until you allow them.
-- Search runs locally, against a browser-side index. The query never leaves your
-  device.
-
-## Architecture at a glance
+## 二、整体架构
 
 ```
-Browser ──JMAP────────────────► Upstream mail server
-   │                              (mail content, direct)
-   │
-   ├── HTTPS ──► Henna server ──► PostgreSQL
-                 (identity, encrypted
-                  credentials, settings, audit)
+                          ┌───────────────────────────────────────┐
+   浏览器 / 移动端  ─────▶ │  Cloudflare Workers (Hono 4, TS)      │
+   Vue3 + Tailwind        │  ├─ /api/*        REST + JWT + RBAC   │
+   (静态资源 assets)       │  ├─ /*           SPA 静态托管         │
+                          │  ├─ email()      Email Routing 收信    │
+   Cloudflare Email  ────▶│  └─ scheduled()  日清 / 配额重置       │
+   Routing (MX)           └───────────────┬───────────────────────┘
+                                          │
+        ┌─────────────────┬───────────────┼────────────────┬──────────────┐
+        ▼                 ▼               ▼                ▼              ▼
+    D1 (SQLite)        KV              R2            发信服务商        通知出口
+    用户/地址/邮件     会话/限流/配置    附件存储        Resend          Telegram
+    服务商/规则/日志                                SendGrid          Webhook
+                                                   Mailgun           转发邮箱
+                                                   Brevo
+                                                   Postmark
+                                                   Cloudflare Email Service
+                                                   noop（自测）
 ```
 
-Mail payloads are on the top line only. The Henna server is on the bottom line
-only. The two never mix. See [docs/architecture.md](docs/architecture.md).
+### 目录
 
-## Deploy in one click
+```
+henna/
+├── worker/                       # 后端：Cloudflare Workers
+│   ├── src/
+│   │   ├── index.ts              # fetch / email / scheduled 三入口
+│   │   ├── env.ts                # Env bindings 类型
+│   │   ├── db/schema.ts          # D1 建表 + 幂等迁移
+│   │   ├── lib/                  # jwt / crypto / http / mime / response
+│   │   ├── middleware/auth.ts    # JWT 鉴权 + RBAC + API Key
+│   │   ├── providers/             # ★ 发信服务商适配器（可插拔）
+│   │   │   ├── types.ts          #   MailProvider 统一接口
+│   │   │   ├── resend.ts  sendgrid.ts  mailgun.ts
+│   │   │   ├── brevo.ts   postmark.ts  cloudflare.ts  noop.ts
+│   │   │   └── index.ts          #   注册表 + failover/round-robin/指定
+│   │   ├── routes/               # auth / mailbox / message / send
+│   │   │                         # provider / rule / admin / openapi
+│   │   └── email/receive.ts      # 入站 MIME 解析与落库
+│   ├── wrangler.jsonc
+│   └── package.json
+├── web/                          # 前端：Vue 3 + Vite + Tailwind CSS v4
+│   └── src/{views,components,api.ts,store.ts}
+├── .github/workflows/deploy.yml  # 部署方式一：GitHub Actions
+├── scripts/deploy.sh             # 部署方式二：一键 CLI 脚本
+└── scripts/seed.ts               # 可选：灌入演示数据
+```
 
-[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/wcvjk8tnz8-create/henna)
+## 三、UI 方案：Tailwind CSS（而非 Element UI）
 
-Cloudflare forks this repository, creates the D1 database and the R2 bucket for
-you, and asks for **three values**. That is the whole setup — there is no
-`wrangler.jsonc` to edit and no migration to run.
+- Workers 静态资源按体积计费传输，Element Plus 全量组件库 + 主题 CSS 明显更重；Tailwind v4 只产出用到的 utility。
+- 需求明确要求**不要蓝紫渐变**，Tailwind v4 的 `@theme` 可以直接改设计令牌（色板、圆角、字体），改一套主题只动一个文件；Element Plus 要覆盖大量 `--el-*` 变量。
+- 本系统 90% 界面是列表 / 表单 / 卡片，Tailwind 手写这些比拖组件库更可控。
 
-| Field | What to enter |
-| --- | --- |
-| `DOMAIN` | JSON array of the mail domains you serve, e.g. `["example.com"]` |
-| `ADMIN` | Your email address. This becomes the first administrator. |
-| `jwt_secret` | Any random letters and digits, no punctuation |
+设计令牌（暖赭 henna 色系，无蓝紫渐变）：
+
+```css
+@theme {
+  --color-henna-500: #b4462f;   /* 主色 · 海娜赭红 */
+  --color-clay-500:  #c97b3c;   /* 辅色 · 陶土橙 */
+  --color-ink-900:   #1c1917;   /* 墨底 */
+  --color-sand-50:   #faf6f1;   /* 米白底 */
+  --color-jade-500:  #3f7d63;   /* 状态色 · 墨绿 */
+}
+```
+
+## 四、发信服务商：可配置、可切换、可容灾
+
+服务商配置存在 D1 的 `mail_provider` 表（API Key 加密存 KV/D1 secret），运行时动态装配，改配置不需要重新部署。
+
+统一接口：
+
+```ts
+export interface MailProvider {
+  readonly kind: ProviderKind;          // resend | sendgrid | ...
+  send(msg: OutgoingMail, cfg: ProviderConfig, env: Env): Promise<SendResult>;
+}
+```
+
+调度策略（`mail_provider.strategy`）：
+
+| 策略 | 行为 |
+|---|---|
+| `priority` | 按 `weight` 降序依次尝试，第一个成功即返回，失败自动 failover 到下一个 |
+| `round_robin` | 在启用集合中轮询，平摊配额（Resend 免费 3000/月，可叠加多家） |
+| `pinned` | 固定在某一封发信请求上指定 `providerId` |
+
+支持：单发、群发（多收件人逐个投递）、附件（base64 → multipart）、HTML/纯文本双版本、自定义 `from` 域名、发送结果落 `mail_log` 表。
+
+## 五、部署：两种方式，全程非手动
+
+两种方式都**不需要在 Cloudflare Dashboard 点鼠标**，D1 / KV / R2 都是脚本自动创建并回写 ID。
+
+### 方式一 · GitHub Actions（推荐，push 即部署）
+
+在仓库 `Settings → Secrets and variables → Actions` 配置：
+
+| Secret | 说明 |
+|---|---|
+| `CLOUDFLARE_API_TOKEN` | 含 Workers / D1 / KV / R2 编辑权限 |
+| `CLOUDFLARE_ACCOUNT_ID` | 账户 ID |
+| `JWT_SECRET` | 会话签名密钥（随机长串） |
+| `ADMIN_EMAIL` | 首个管理员邮箱，如 `admin@your.domain` |
+| `MAIL_DOMAINS` | JSON 数组，如 `["your.domain"]` |
+
+推送到 `main` 即自动：建资源 → 迁库 → 部署前端 + Worker。也支持 Actions 面板 `Run workflow` 手动触发。
+
+### 方式二 · 一键 CLI 脚本（本地 / 服务器）
 
 ```bash
-openssl rand -hex 24    # paste the output as jwt_secret
+export CLOUDFLARE_API_TOKEN=xxx
+export CLOUDFLARE_ACCOUNT_ID=xxx
+export JWT_SECRET=$(openssl rand -hex 32)
+export ADMIN_EMAIL=admin@your.domain
+export MAIL_DOMAINS='["your.domain"]'
+./scripts/deploy.sh            # 自动建资源 → 迁库 → 构建 → 部署
 ```
 
-Prefer the dashboard over the button? See
-[docs/cloudflare-deployment.md](docs/cloudflare-deployment.md#dashboard-deployment-no-cli-at-all)
-— fork, create a Worker, add the same three values under
-*Settings → Variables and Secrets*, redeploy.
+脚本幂等：资源已存在则复用，重复执行安全。
 
-Then sign in for the first time:
+### 部署后的收尾（DNS 侧， unavoidable）
 
-1. Open your `*.workers.dev` URL and request a code with the `ADMIN` address.
-2. No mail service is configured yet, so **the code is printed to the server
-   log**. Read it with `npx wrangler tail`.
-3. Enter the code, set a password, and turn on TOTP — administrators must.
-4. Configure Resend, GitHub OAuth and object storage in `/admin/settings`.
+1. Cloudflare 控制台 → 域名 → **Email → Email Routing**，开启并把 MX 指向 Cloudflare。
+2. Routing rules 中把目标地址 / Catch-all → **Send to Worker** → 选 `henna-mail`。
+3. 访问 `https://<你的域名>/api/init/<JWT_SECRET>` 完成建表（脚本与 Actions 已自动调用，也可手动兜底）。
 
-Step 2 is a deliberate, one-time exception: with no way to send mail, an
-instance would otherwise be impossible to sign in to at all. It applies only
-while nobody has completed a sign-in, and only for the `ADMIN` address. See
-[docs/cloudflare-deployment.md](docs/cloudflare-deployment.md#one-click-deployment).
-
-## Quick start (local)
+## 六、本地开发
 
 ```bash
-git clone https://github.com/your-org/henna.git
-cd henna
-npm install
-cp .env.example .env          # then fill in the four required values
-npm run db:migrate
-npm run dev
+cd worker && npm i && npm run d1:local   # 本地 SQLite 建表
+cd worker && npm run dev                 # http://localhost:8787
+cd web    && npm i && npm run dev        # http://localhost:5173 (代理 /api 到 8787)
 ```
 
-Generate the two secrets you need:
+首次注册的用户自动成为 `admin`。
+
+## 七、界面预览
+
+| 页面 | 预览 |
+|---|---|
+| 收件箱 | ![](docs/preview/01-inbox.png) |
+| 写信 · 分发 | ![](docs/preview/02-compose.png) |
+| 发信服务商 | ![](docs/preview/03-providers.png) |
+| 邮箱地址 | ![](docs/preview/04-addresses.png) |
+| 分发规则 | ![](docs/preview/05-rules.png) |
+| 管理后台 | ![](docs/preview/06-admin.png) |
+| 登录 | ![](docs/preview/07-login.png) |
+| 移动端 | ![](docs/preview/08-mobile.png) |
+
+预览图为本地 mock 数据渲染（脚本：`scripts/preview-server.mjs`），非线上实例。
+
+## 八、开放 API
+
+所有 `/api/*` 均可用 `Authorization: Bearer <jwt>` 或 `X-Api-Key: <key>` 调用：
 
 ```bash
-openssl rand -base64 32                    # HENNA_CREDENTIAL_KEY
-openssl rand -hex 24 | tr -d '\n'          # jwt_secret (letters and digits only)
+curl -X POST https://<domain>/api/send \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '{"from":"a@your.domain","to":["b@example.com"],"subject":"hi","html":"<b>hi</b>"}'
 ```
 
-Open <http://localhost:3000>. The address in `ADMIN` is created as the first
-administrator on first boot; sign in with an email code, then set a password and
-enable TOTP.
-
-## Deploying to Cloudflare Workers
-
-The full walk-through is in
-[docs/cloudflare-deployment.md](docs/cloudflare-deployment.md). The short version:
-
-1. Create a Hyperdrive configuration pointing at your PostgreSQL instance.
-2. Fill in `wrangler.jsonc` (name, `compatibility_date`, Hyperdrive binding).
-3. Add repository secrets: `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`,
-   `DOMAIN`, `ADMIN`, `JWT_SECRET`, `HENNA_CREDENTIAL_KEY`.
-4. Push to `main`.
-
-The workflow runs typecheck, lint, unit tests and Playwright E2E. If any step
-fails, nothing is deployed.
-
-### GitHub Actions, step by step
-
-1. **Fork or create the repository** and push your `main` branch.
-2. **Create a Cloudflare API token** — *My Profile → API Tokens → Create Custom
-   Token*. Do **not** use the *Edit Cloudflare Workers* template: it lacks D1 and
-   R2 permissions, so the deploy fails after the Worker uploads. Grant
-   `Workers Scripts:Edit`, `D1:Edit`, `Workers R2 Storage:Edit`,
-   `Workers Observability:Edit`, `Account Settings:Read` (account scope) and
-   `User Details:Read` (user scope); add `Workers Routes:Edit` (zone scope) only
-   if you use a custom domain. See
-   [docs/cloudflare-deployment.md](docs/cloudflare-deployment.md#8-github-actions-pipeline).
-3. **Find your Account ID** on the Cloudflare dashboard sidebar.
-4. **Add repository secrets** under *Settings → Secrets and variables → Actions*:
-
-   | Secret | Purpose |
-   | --- | --- |
-   | `CLOUDFLARE_API_TOKEN` | Deployment credential, CI only |
-   | `CLOUDFLARE_ACCOUNT_ID` | Which account to deploy into |
-   | `DOMAIN` | JSON array of mail domains, e.g. `["example.com"]` |
-   | `ADMIN` | Bootstrap administrator email |
-   | `JWT_SECRET` | Session signing key, letters and digits only |
-   | `HENNA_CREDENTIAL_KEY` | base64 of 32 random bytes |
-   | `HENNA_STORAGE_ORIGINS` | Bucket origins allowed by the CSP (see § below) |
-   | `HENNA_CREDENTIAL_KEY`*, `GITHUB_CLIENT_SECRET`, `RESEND_API_KEY` | Optional if you will configure them in `/admin/settings` |
-
-5. **Push to `main`.** The `quality` job gates the `deploy` job; a red check means
-   no deployment.
-
-## Attachments and object storage
-
-Henna uses object storage for attachments, with **Cloudflare R2** as the default
-and **any S3-compatible service** (AWS S3, MinIO, Backblaze B2, Hetzner, Wasabi)
-as a supported alternative. Both speak the same presigned SigV4 protocol, so one
-implementation covers all of them.
-
-The flow is deliberately narrow:
-
-1. The browser asks Henna for an upload URL, sending only a filename and a size.
-2. The DAL checks the size, generates a key under `users/<id>/…`, signs a PUT
-   URL that expires in minutes, and records the audit event.
-3. The browser PUTs the file straight to the bucket.
-
-Henna never receives the bytes. See [docs/storage.md](docs/storage.md) for
-bucket setup, CORS and the CSP prerequisite.
-
-## Documentation
-
-| Document | What it covers |
-| --- | --- |
-| [docs/self-hosting.md](docs/self-hosting.md) | Environment variables, TLS, migrations, backups, key rotation |
-| [docs/cloudflare-deployment.md](docs/cloudflare-deployment.md) | OpenNext, Hyperdrive, Workers secrets, Resend DNS |
-| [docs/security.md](docs/security.md) | Threat model, control checklist, known limits, disclosure |
-| [docs/architecture.md](docs/architecture.md) | Data-flow diagrams and the mail-content boundary |
-| [docs/storage.md](docs/storage.md) | R2 and S3-compatible attachment storage |
-| [docs/licenses.md](docs/licenses.md) | Dependency licences and compatibility review |
-| [docs/README.md](docs/README.md) | Documentation index, in both languages |
-| [CONTRIBUTING.md](CONTRIBUTING.md) | Coding standards and review rules for security-critical paths |
-
-## Security
-
-Henna is designed so that a compromise of its server does not hand over your
-mail: the server holds encrypted upstream credentials and an audit log, and
-nothing else. See [docs/security.md](docs/security.md) for the threat model, the
-full control checklist, and the known limitations — including the honest one,
-which is that an attacker who owns the server can decrypt credentials for as long
-as they hold the key ring.
-
-To report a vulnerability, follow the disclosure process in
-[docs/security.md](docs/security.md#reporting-a-vulnerability). Please do not
-open a public issue for a live vulnerability.
-
-## Licence
-
-AGPL-3.0-or-later. See [LICENSE](LICENSE).
-
-### Build and deploy commands
-
-| Field | Value |
-| --- | --- |
-| Build command | `npm run build` |
-| Deploy command | `npx wrangler deploy` |
-
-There is a trap here worth explaining, because it is not obvious and it fails
-loudly: **`opennextjs-cloudflare build` does not run `next build` directly — it
-runs the project's own `build` script.** So setting `"build":
-"opennextjs-cloudflare build"` makes it call itself, and the log fills with
-repeated `OpenNext — Cloudflare build` banners until the build is killed.
-
-`npm run build` therefore runs `scripts/build.mjs`, which breaks the cycle with
-a guard variable:
-
-- at the top level it runs `opennextjs-cloudflare build`, setting
-  `HENNA_OPENNEXT_CHILD=1` for the child;
-- invoked *as* that child, it sees the flag and runs plain `next build`
-  `--turbopack` instead — never calling back into OpenNext.
-
-The result is one command that works in the dashboard, in CI, and when OpenNext
-invokes it internally. `npm run build:node` runs the plain Next build directly,
-for self-hosting on Node where `.open-next/` is not wanted.
-
-The other failure mode is the opposite one: a plain `next build` produces no
-`.open-next/`, and the deploy then fails with
-
-```
-ERROR Could not find compiled Open Next config, did you run the build command?
-```
-
-
-### The first account
-
-A fresh instance has no way in until someone claims it. The `ADMIN` setting
-names the administrator's address but carries no credential, so the account has
-to be claimed with a password:
-
-1. Open `/register`.
-2. Enter **exactly** the address you set as `ADMIN`.
-3. Choose a password. That account becomes the administrator.
-
-While no account exists, this is the only address that can register — which is
-why the page says so. As soon as one account exists, registration follows
-`registrationMode` instead, and the `ADMIN` address has no special status: if it
-registers again it gets an ordinary `user` account.
-
-After registering you are sent to `/login` to sign in with the password you
-just set.
-
-
-
-### Heads up: the button creates a *new* repository
-
-The **Deploy to Cloudflare** button **forks** Henna into a new repository under
-your account (e.g. `you/henna`) and deploys from that fork. That is how the
-button is able to commit the Worker config on your behalf.
-
-Two consequences worth knowing:
-
-- Your deployment is wired to **the fork**, not to this repository. Pushing to
-  the original does **not** trigger a deploy.
-- To pick up Henna's later fixes you merge from the upstream repository into
-  your fork.
-
-If you would rather deploy **from a repository you already own**, skip the
-button:
-
-1. Cloudflare Dashboard → **Workers & Pages** → **Create** →
-   **Connect to Git**.
-2. Authorise GitHub and pick your existing repository. Cloudflare deploys from
-   it directly, with no fork.
-3. Set the same three variables, then push a commit to deploy.
-
-Or skip Git entirely and deploy from your machine:
+## 九、测试
 
 ```bash
-npx wrangler login
-npm run build          # == opennextjs-cloudflare build
-npx wrangler deploy    # uploads .open-next/ via worker.ts
+cd worker
+npx esbuild src/test/smoke.ts --bundle --format=esm --platform=node --target=node20 --outfile=/tmp/smoke.mjs
+node /tmp/smoke.mjs     # 12 passed, 0 failed
 ```
 
-### 4. Turn on receiving mail (this is the part that makes Henna a mail service)
+## License
 
-Henna's Worker exports an `email()` handler alongside `fetch()`, so Cloudflare
-Email Routing can deliver inbound mail straight into it.
-
-1. Cloudflare Dashboard → your domain → **Email** → **Email Routing**.
-2. **Enable Email Routing** → *Add records and enable*. Cloudflare adds the MX,
-   SPF and DKIM records for you.
-3. **Email Workers** → *Create address*. Either:
-   - **Catch-all**: `*@yourdomain.com` → every address that does not match
-     another rule is delivered, and Henna creates the mailbox on arrival; or
-   - **Specific addresses**: `hello@yourdomain.com`, one rule each.
-4. Set *Action* to **Send to a Worker** and pick `henna`.
-
-No separate Worker is needed — the same Worker serves the web UI and receives
-mail.
-
-Inbound mail is stored like this:
-
-- The unmodified MIME goes to R2 under `mail/<mailbox>/<timestamp>.eml`, so the
-  original is always recoverable.
-- Parsed fields (from, subject, snippet, plain text) go into `messages`, so
-  listing and searching never touch R2.
-- Attachment **metadata** goes into `attachments`; attachment **bytes** go to R2.
-  The database never stores a blob.
-
-A mailbox row is created on arrival when catch-all is on, so mail is never lost
-just because nobody claimed the address first. An address can also be created
-ahead of time and assigned to a user; if `forward_to` is set, the message is
-relayed onward and no local copy is kept.
-
+MIT

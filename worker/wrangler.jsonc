@@ -1,0 +1,53 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "henna-mail",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-01-09",
+  "compatibility_flags": ["nodejs_compat"],
+
+  "assets": {
+    "directory": "../web/dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application"
+  },
+
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "henna-mail-db",
+      "database_id": "REPLACE_D1_DATABASE_ID"
+    }
+  ],
+
+  "kv_namespaces": [
+    {
+      "binding": "KV",
+      "id": "REPLACE_KV_NAMESPACE_ID"
+    }
+  ],
+
+  "r2_buckets": [
+    {
+      "binding": "R2",
+      "bucket_name": "henna-mail-r2"
+    }
+  ],
+
+  "observability": {
+    "enabled": true
+  },
+
+  "vars": {
+    "APP_NAME": "Henna Mail",
+    "JWT_SECRET": "REPLACE_JWT_SECRET",
+    "ADMIN_EMAIL": "admin@example.com",
+    "MAIL_DOMAINS": "[\"example.com\"]",
+    "ALLOW_REGISTER": "true",
+    "DEFAULT_QUOTA": "50",
+    "PROVIDER_STRATEGY": "priority"
+  },
+
+  "triggers": {
+    "crons": ["0 16 * * *"]
+  }
+}

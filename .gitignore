@@ -1,13 +1,12 @@
 node_modules/
-.next/
-.open-next/
+dist/
 .wrangler/
+.dev.vars
 .env
 .env.local
-.dev.vars
-playwright-report/
-test-results/
-coverage/
-*.tsbuildinfo
-next-env.d.ts
-cloudflare-env.d.ts
+*.log
+.DS_Store
+.idea/
+.vscode/
+# 本地安装位置修正（沙盒环境专用，与项目无关）
+.npmrc

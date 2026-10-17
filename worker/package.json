@@ -1,0 +1,24 @@
+{
+  "name": "henna-worker",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --port 8787",
+    "build": "tsc --noEmit",
+    "deploy": "wrangler deploy",
+    "migrate": "wrangler d1 migrations apply henna-mail-db --remote",
+    "migrate:local": "wrangler d1 migrations apply henna-mail-db --local",
+    "secret:jwt": "wrangler secret put JWT_SECRET",
+    "cf-typegen": "wrangler types"
+  },
+  "dependencies": {
+    "hono": "^4.6.14",
+    "postal-mime": "^2.4.3"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250109.0",
+    "typescript": "^5.7.2",
+    "wrangler": "^3.91.0"
+  }
+}
