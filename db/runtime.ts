@@ -5,6 +5,11 @@
  * modules can depend on it without a cycle. It answers one question — are we on
  * Workers with a D1 binding, or on Node.js with a Postgres URL — and that answer
  * decides which Drizzle dialect the rest of the app is built on.
+ *
+ * Getting this wrong is how a deploy ends up a blank page: Workers bindings are
+ * objects, not strings, so they are invisible on `process.env`. If nothing here
+ * recognises Workers, the app concludes it is on Node, reaches for `pg`, and —
+ * on Workers, where pg is deliberately absent — throws before anything renders.
  */
 
 export type RuntimeKind = "workers-d1" | "workers-pg" | "node";
@@ -15,23 +20,54 @@ export interface D1Binding {
   batch(statements: unknown[]): Promise<unknown[]>;
 }
 
-interface CloudflareEnvShape {
+export interface CloudflareEnvShape {
   DB?: D1Binding;
   HYPERDRIVE?: { connectionString: string };
   DATABASE_URL?: string;
 }
 
 /**
- * Workers bindings are objects, not strings, so they are not visible on
- * `process.env`. OpenNext exposes them on a global; the fallback covers the
- * case where they are injected some other way.
+ * True when running under workerd, checked independently of any binding.
+ *
+ * Used as a last resort so that a Workers deploy with an unreachable context is
+ * still treated as Workers. Guessing "node" instead is the dangerous direction:
+ * it routes the app into the pg code path, which does not exist on Workers.
+ */
+function looksLikeWorkerd(): boolean {
+  const g = globalThis as Record<string, unknown>;
+  if (g.WebSocketPair !== undefined) return true;
+  const navigator = g.navigator as { userAgent?: string } | undefined;
+  if (navigator?.userAgent === "Cloudflare-Workers") return true;
+  return false;
+}
+
+/**
+ * Read the Cloudflare environment.
+ *
+ * Order matters. An explicitly injected global wins so tests can drive this
+ * without workerd; then OpenNext's request context, which is the real source on
+ * a deployed Worker; then a couple of shapes seen across OpenNext versions.
  */
 function getCloudflareEnv(): CloudflareEnvShape | null {
-  const candidate = (globalThis as { __hennaCloudflareEnv__?: CloudflareEnvShape })
+  const injected = (globalThis as { __hennaCloudflareEnv__?: CloudflareEnvShape })
     .__hennaCloudflareEnv__;
-  if (candidate && (candidate.DB || candidate.HYPERDRIVE || candidate.DATABASE_URL)) {
-    return candidate;
+  if (injected) return injected;
+
+  // OpenNext exposes bindings through a request-scoped context. It throws
+  // outside a request (static generation at build time), which is not an error
+  // here — it just means "no bindings available right now".
+  try {
+    const mod = (globalThis as {
+      __opennextCloudflareContext?: () => { env?: CloudflareEnvShape };
+    }).__opennextCloudflareContext;
+    if (typeof mod === "function") {
+      const ctx = mod();
+      if (ctx?.env) return ctx.env;
+    }
+  } catch {
+    // fall through
   }
+
   const legacy = (process.env as Record<string, unknown>).HYPERDRIVE;
   if (typeof legacy === "object" && legacy !== null) {
     return legacy as CloudflareEnvShape;
@@ -50,6 +86,9 @@ export function detectRuntime(): RuntimeKind {
   if (process.env.HENNA_RUNTIME === "workers") {
     return process.env.HENNA_DB_KIND === "postgres" ? "workers-pg" : "workers-d1";
   }
+  // No binding was read, but the platform is unmistakably Workers: assume D1.
+  // The alternative — claiming Node — sends every request into the pg path.
+  if (looksLikeWorkerd()) return "workers-d1";
   return "node";
 }
 
@@ -63,4 +102,15 @@ export function resolveConnectionString(): string {
   if (cf?.HYPERDRIVE?.connectionString) return cf.HYPERDRIVE.connectionString;
   if (cf?.DATABASE_URL) return cf.DATABASE_URL;
   return process.env.DATABASE_URL ?? "";
+}
+
+/**
+ * Called once per request by the Worker entry point.
+ *
+ * Putting the bindings on a global is what makes them reachable from the
+ * synchronous `getDb()` path without threading a context argument through every
+ * DAL function.
+ */
+export function installCloudflareEnv(env: CloudflareEnvShape): void {
+  (globalThis as { __hennaCloudflareEnv__?: CloudflareEnvShape }).__hennaCloudflareEnv__ = env;
 }

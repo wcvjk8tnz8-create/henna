@@ -2,7 +2,9 @@ import { NextResponse } from "next/server";
 import { tryGetRootConfig } from "@/lib/config/env";
 import { getKeyRotationStatus } from "@/lib/crypto/keyring";
 import { getStorageStatus } from "@/lib/dal/storage";
-import { ensureSchema } from "@/db";
+import { ensureSchema, getDb } from "@/db";
+import { detectRuntime, getD1Binding, usesD1 } from "@/db/runtime";
+import { sql } from "drizzle-orm";
 
 /**
  * Health and configuration check.
@@ -18,6 +20,26 @@ export async function GET() {
     await ensureSchema();
   } catch {
     // Reported below as a database problem rather than crashing the check.
+  }
+
+  // Which database path the app thinks it is on, and whether it actually works.
+  // A blank page is almost always this: bindings are objects, not strings, so a
+  // Worker that cannot see them concludes it is on Node, reaches for pg, and
+  // throws before rendering anything.
+  const runtime = detectRuntime();
+  let database: { kind: string; reachable: boolean; detail: string | null };
+  try {
+    const db = getDb();
+    // A real round-trip, not just "a client was constructed": a Worker can
+    // build a D1 handle and still fail the first query.
+    await db.execute?.(sql`select 1`);
+    database = { kind: runtime, reachable: true, detail: null };
+  } catch (error) {
+    database = {
+      kind: runtime,
+      reachable: false,
+      detail: error instanceof Error ? error.message : String(error),
+    };
   }
 
   const config = tryGetRootConfig();
@@ -41,6 +63,7 @@ export async function GET() {
       {
         status: "misconfigured",
         issues: config.error.issues,
+        database,
         credentialKeyring: rotation.healthy ? "ok" : "unavailable",
       },
       { status: 503, headers: { "cache-control": "no-store" } },
@@ -55,6 +78,11 @@ export async function GET() {
       domains: config.value.DOMAIN.length,
       adminConfigured: Boolean(config.value.ADMIN),
       jwtSecretConfigured: Boolean(config.value.jwt_secret),
+      database: {
+        ...database,
+        d1BindingVisible: getD1Binding() !== null,
+        usesD1: usesD1(),
+      },
       credentialKeyring: {
         activeKeyId: rotation.activeKeyId,
         keyCount: rotation.keyCount,

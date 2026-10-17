@@ -74,6 +74,41 @@ Cloudflare 入口，而该入口依赖 `pg-cloudflare` —— 这个包发布的
 `db/pg-unavailable.ts` —— 一个构造函数直接抛错的模块。Node 自托管构建用的仍是
 真实的 `pg`，并保留在 `serverExternalPackages` 里。
 
+
+### 如果页面是空白的
+
+Worker 起来了但一片空白，几乎总是同一个原因：**应用看不到数据库绑定，于是以为自己跑在
+Node 上。**
+
+Cloudflare 的绑定是 `env` 上的对象，不是 `process.env` 上的字符串。绑定不可见时，Henna
+会走 Node 路径、去拿 `pg` —— 而它刻意不存在于 Workers 包中 —— 于是在渲染任何内容之前
+就抛错。没有错误边界时，浏览器看到的就是一张白页。
+
+先打开 `/api/health`，它会报告应用做了什么判断：
+
+```json
+{
+  "status": "ok",
+  "database": {
+    "kind": "workers-d1",
+    "reachable": true,
+    "d1BindingVisible": true,
+    "usesD1": true
+  }
+}
+```
+
+| `database.kind` | 含义 |
+| --- | --- |
+| `workers-d1` | Workers 上的正确结果。 |
+| `node` | 绑定没有传到应用 —— 检查 `wrangler.jsonc` 的 `d1_databases` 是否声明了 `"binding": "DB"`，以及数据库是否真的被创建了。 |
+| `workers-pg` | 绑定了 Hyperdrive；只有你选择外部 Postgres 时才应出现。 |
+
+如果 `reachable` 为 `false`，`detail` 字段会带上驱动的错误信息。
+
+为了让这件事不再无声：新增了 `app/error.tsx` 与 `app/global-error.tsx`，会渲染错误信息
+而不是白页；`/api/health` 也加上了上面的数据库探测。
+
 ### 3. 添加三个变量
 
 *Worker → 设置 → 变量和机密 → 添加*

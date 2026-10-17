@@ -82,6 +82,44 @@ sets `HENNA_BUILD_TARGET=workers` before OpenNext invokes the Next build, and
 whose constructor throws. Self-hosted Node builds get the real `pg` and keep it
 in `serverExternalPackages`.
 
+
+### If the page is blank
+
+A Worker that starts but renders nothing is nearly always one specific thing:
+**the app could not see its database binding and concluded it was running on
+Node.**
+
+Cloudflare bindings are objects on `env`, not strings on `process.env`. If the
+binding is not visible, Henna takes the Node path, reaches for `pg` — which is
+deliberately absent from a Workers bundle — and throws before anything renders.
+With no error boundary, that arrives at the browser as a white page.
+
+Open `/api/health` first. It reports what the app decided and why:
+
+```json
+{
+  "status": "ok",
+  "database": {
+    "kind": "workers-d1",
+    "reachable": true,
+    "d1BindingVisible": true,
+    "usesD1": true
+  }
+}
+```
+
+| `database.kind` | What it means |
+| --- | --- |
+| `workers-d1` | Correct on Workers. |
+| `node` | The binding is not reaching the app — check that `wrangler.jsonc` declares `d1_databases` with `"binding": "DB"`, and that the database was actually created. |
+| `workers-pg` | Hyperdrive is bound; only if you chose external Postgres. |
+
+If `reachable` is `false`, the `detail` field carries the driver's message.
+
+Two things were added so this is never silent again: `app/error.tsx` and
+`app/global-error.tsx` render the message instead of a blank page, and
+`/api/health` includes the database probe above.
+
 ### 3. Add the three variables
 
 *Worker → Settings → Variables and Secrets → Add*
