@@ -278,9 +278,13 @@ export async function applyD1Schema(binding: D1Binding): Promise<void> {
       binding.prepare(statement),
     ) as unknown[],
   );
+  // The timestamp is inlined rather than bound: D1 rejects a `?` that has no
+  // matching argument with "Wrong number of parameter bindings", and that error
+  // came from exactly this line. Date.now() is a number, so there is nothing
+  // to escape.
   await binding
     .prepare(
-      "INSERT OR IGNORE INTO _schema_migrations (name, applied_at) VALUES ('0000_init', ?)",
+      `INSERT OR IGNORE INTO _schema_migrations (name, applied_at) VALUES ('0000_init', ${Date.now()})`,
     )
     .run();
 }
