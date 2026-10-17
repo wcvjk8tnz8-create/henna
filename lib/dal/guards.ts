@@ -15,8 +15,9 @@ import { AuthzError, type Principal } from "./types";
  *
  * Every protected Server Action, Route Handler and Server Component starts by
  * calling one of these. They are the single authorisation enforcement point;
- * `middleware.ts` performs optimistic redirects only and is never relied upon
- * for security (on Cloudflare Workers Node.js middleware does not even run).
+ * There is no middleware or proxy file at all: Next 16 renamed the convention
+ * and recommends avoiding it, it never runs on Cloudflare Workers, and every
+ * protected entry point here redirects itself. See lib/dal/guards.ts.
  *
  * Denials are audited at the point of decision, with the actor's identity when
  * it is known and with a null actor when it is not — the failed attempt is

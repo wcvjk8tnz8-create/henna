@@ -197,6 +197,11 @@ export async function sendMail(
       return sendWithBrevo(config, message);
     case "mailjet":
       return sendWithMailjet(config, message);
+    default:
+      // Unreachable while provider is validated by Zod. Throwing rather than
+      // returning keeps TypeScript honest if a fourth provider is ever added
+      // and a call site is missed.
+      throw new EmailSendError(provider, `No implementation for provider "${provider}"`);
   }
 }
 
@@ -221,5 +226,7 @@ export function missingCredentials(
         ...(config.mailjetApiKey ? [] : ["mailjetApiKey"]),
         ...(config.mailjetSecretKey ? [] : ["mailjetSecretKey"]),
       ];
+    default:
+      return ["emailProvider"];
   }
 }

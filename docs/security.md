@@ -7,6 +7,27 @@ This document states what Henna protects against, how, and — just as important
 
 ---
 
+
+### No middleware, on purpose
+
+Henna has no `middleware.ts` (and no `proxy.ts`, its successor in Next 16).
+Three reasons, any one of which would be sufficient:
+
+1. **It does not run on Cloudflare Workers.** OpenNext does not execute it, so
+   any rule placed there silently does not exist in the primary deployment
+   target.
+2. **Next.js recommends avoiding it.** The convention was renamed to make it
+   less inviting, precisely because it encourages putting logic in a place that
+   looks like a boundary but is not one.
+3. **It cannot make the decision anyway.** Verifying a session needs
+   `node:crypto` and a database read, neither of which is available in the Edge
+   runtime.
+
+Every protected entry point therefore guards itself: Server Components, Server
+Actions and Route Handlers call `requirePrincipal()` or `requireAdmin()` from
+`lib/dal/guards.ts`, and redirect on `AuthzError`. An unauthenticated request to
+`/inbox` is redirected by the page, not by a proxy in front of it.
+
 ## Threat model
 
 ### Assets

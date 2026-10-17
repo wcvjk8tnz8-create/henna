@@ -86,6 +86,7 @@ export const registrationModeSchema = z.enum(["closed", "invite-only", "allowlis
 export const totpPolicySchema = z.enum(["optional", "required", "admin-only"]);
 export const authMethodSchema = z.enum(["password", "github", "email_otp"]);
 export const emailProviderSchema = z.enum(["resend", "brevo", "mailjet"]);
+export type EmailProviderId = z.infer<typeof emailProviderSchema>;
 
 export const rootEnvSchema = z.object({
   /** Mail domains this instance serves. JSON array. Root config. */

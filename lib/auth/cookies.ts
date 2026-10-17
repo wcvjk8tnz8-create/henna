@@ -1,11 +1,10 @@
 /**
  * Session cookie names.
  *
- * These live alone so that Edge middleware can reference them without importing
+ * These live alone so that a module can name a session cookie without importing
  * `lib/auth/session` — which pulls in `node:crypto`, Drizzle and the database.
- * A middleware that imports the data layer cannot run on the Edge runtime at
- * all, and it does not need to: it performs an optimistic redirect and nothing
- * else.
+ * Nothing outside the data layer needs the full session module just to say
+ * which cookie to read.
  */
 
 export const ACCESS_COOKIE = "henna_session";

@@ -45,7 +45,9 @@ let bootstrap: Promise<void> | null = null;
  * of the app is written once against `Database` and works on either. See the
  * note in `db/schema.ts` about the single cast that makes that possible.
  */
-export { D1_SCHEMA_SQL, splitSqlStatements, applyD1Schema } from "./d1-schema";
+import { applyD1Schema, D1_SCHEMA_SQL, splitSqlStatements } from "./d1-schema";
+
+export { D1_SCHEMA_SQL, splitSqlStatements, applyD1Schema };
 
 export function getDb(): Database {
   if (db !== null) return db;

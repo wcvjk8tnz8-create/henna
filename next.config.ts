@@ -57,10 +57,9 @@ const nextConfig: NextConfig = {
     // optimised from a third-party origin.
     remotePatterns: [],
   },
-  eslint: {
-    // We use Biome; `next lint` is deprecated and intentionally unused.
-    ignoreDuringBuilds: true,
-  },
+  // No `eslint` key: Next 16 removed it, and an unknown key is reported as an
+  // invalid config on every build. Linting is Biome's job (`npm run lint`),
+  // which CI runs separately.
   typescript: {
     // `tsc --noEmit` runs in CI and blocks merges; the build must not silently
     // skip type errors.

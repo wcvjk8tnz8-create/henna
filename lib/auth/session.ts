@@ -25,8 +25,8 @@ import { randomBytesOf, toBase64Url } from "@/lib/crypto/random";
  */
 
 /**
- * Re-exported from `lib/auth/cookies.ts`, which exists so Edge middleware can
- * name these cookies without importing the data layer.
+ * Re-exported from `lib/auth/cookies.ts`, so callers can name a cookie without
+ * importing the whole session module.
  */
 export { ACCESS_COOKIE, REFRESH_COOKIE, PENDING_MFA_COOKIE } from "./cookies";
 
