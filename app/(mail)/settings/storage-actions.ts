@@ -80,7 +80,7 @@ export async function removeAttachment(
   const context = buildRequestContext(await headers());
   const result = await deleteStorageObject(principal, objectId, context);
   revalidatePath("/settings");
-  return result.ok ? { ok: true, message: "Removed." } : result;
+  return result.ok ? { ok: true, message: "Removed." } : { ok: false, message: result.reason };
 }
 
 export async function refreshAttachments() {

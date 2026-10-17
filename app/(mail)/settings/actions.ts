@@ -6,10 +6,14 @@ import { requirePrincipal } from "@/lib/dal/guards";
 import { getUserSettings, updateUserSettings } from "@/lib/dal/settings";
 import {
   beginTotpEnrollment,
-  disableTotp,
+  disableTotp as disableTotpForUser,
   regenerateRecoveryCodes,
 } from "@/lib/dal/totp";
-import { decryptCredential, deleteCredential, saveCredential } from "@/lib/dal/credentials";
+import {
+  decryptCredential,
+  deleteCredential,
+  saveCredential as saveCredentialForUser,
+} from "@/lib/dal/credentials";
 import { buildRequestContext } from "@/lib/request";
 import { writeAudit } from "@/lib/audit/log";
 import { AUDIT_ACTIONS } from "@/lib/audit/events";
@@ -78,7 +82,7 @@ export async function disableTotp(formData: FormData): Promise<SettingsResult> {
     return { ok: false, message: "Enter your current code or a recovery code." };
   }
 
-  const result = await disableTotp(principal, parsed.value, await context());
+  const result = await disableTotpForUser(principal, parsed.value, await context());
   revalidatePath("/settings");
   return result.ok
     ? { ok: true, message: "Two-factor authentication is now off." }
@@ -107,7 +111,7 @@ export async function saveCredential(formData: FormData): Promise<SettingsResult
   const value = parsed.value;
   const ctx = await context();
 
-  await saveCredential({
+  await saveCredentialForUser({
     principal,
     label: value.label,
     protocol: value.protocol,

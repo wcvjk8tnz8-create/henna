@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { tryGetRootConfig } from "@/lib/config/env";
 import { getKeyRotationStatus } from "@/lib/crypto/keyring";
 import { getStorageStatus } from "@/lib/dal/storage";
+import { ensureSchema } from "@/db";
 
 /**
  * Health and configuration check.
@@ -11,6 +12,14 @@ import { getStorageStatus } from "@/lib/dal/storage";
  * here with their own message. No secret value is ever included.
  */
 export async function GET() {
+  // A freshly deployed instance hits /api/health before anything touches the
+  // database: creating the schema here is what makes the dashboard deploy work.
+  try {
+    await ensureSchema();
+  } catch {
+    // Reported below as a database problem rather than crashing the check.
+  }
+
   const config = tryGetRootConfig();
   const rotation = getKeyRotationStatus();
 

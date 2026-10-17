@@ -81,8 +81,15 @@ export const rootEnvSchema = z.object({
   /** Session/JWT signing secret. Root config. */
   jwt_secret: jwtSecretSchema,
 
-  /** AES-256-GCM keyring, comma separated base64 32-byte keys. */
-  HENNA_CREDENTIAL_KEY: z.string().min(1),
+  /**
+   * AES-256-GCM keyring, comma separated base64 32-byte keys.
+   *
+   * Optional so that a deployment can boot from the three root variables alone
+   * (DOMAIN, ADMIN, jwt_secret). When absent, a key is derived from
+   * `jwt_secret` by HKDF — see lib/crypto/keyring.ts for why that is safe and
+   * what it costs.
+   */
+  HENNA_CREDENTIAL_KEY: z.string().min(1).optional(),
 
   /** Node.js / self-hosted only. On Workers, Hyperdrive is used instead. */
   DATABASE_URL: z.string().min(1).optional(),

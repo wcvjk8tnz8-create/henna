@@ -1,3 +1,4 @@
+import { ensureSchema } from "@/db";
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
@@ -22,7 +23,11 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  // Creates the schema on first request when running on D1, so a deploy that
+  // skipped the migration step still comes up working.
+  await ensureSchema();
+
   return (
     <html lang="en" suppressHydrationWarning>
       <body className="min-h-full">{children}</body>

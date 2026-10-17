@@ -19,27 +19,38 @@
     "HENNA_TRUST_PROXY": "1"
   },
 
-  // Secrets are NOT listed here. Set them with:
+  // Only ONE secret is required:
   //   npx wrangler secret put jwt_secret
-  //   npx wrangler secret put HENNA_CREDENTIAL_KEY
-  //   npx wrangler secret put GITHUB_CLIENT_SECRET   (optional; UI alternative)
-  //   npx wrangler secret put RESEND_API_KEY         (optional; UI alternative)
+  // Optional (both can be entered in /admin/settings instead):
+  //   npx wrangler secret put GITHUB_CLIENT_SECRET
+  //   npx wrangler secret put RESEND_API_KEY
+  // HENNA_CREDENTIAL_KEY is not needed — when absent it is derived from
+  // jwt_secret by HKDF. Set it explicitly if you want the two to rotate
+  // independently.
 
-  // Attachments. Presigned URLs are used for browser <-> bucket traffic, so the
-  // binding is optional: it is here for operators who want bucket access from
-  // the Worker itself. Henna does not proxy attachment bytes.
+  // Database. Declared by NAME, not by id: Cloudflare creates the D1 database on
+  // first deploy, so there is no id to copy and nothing to paste here.
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "henna-db",
+      "migrations_dir": "db/migrations/d1"
+    }
+  ],
+
+  // Attachments. Also declared by name; the bucket is created on first deploy.
+  // The browser reads and writes it through presigned URLs, so Henna never
+  // proxies attachment bytes.
   "r2_buckets": [
     {
       "binding": "ATTACHMENTS",
       "bucket_name": "henna-attachments"
     }
-  ],
-
-  "hyperdrive": [
-    {
-      "binding": "HYPERDRIVE",
-      "id": "<HYPERDRIVE_CONFIG_ID>",
-      "localConnectionString": "postgres://postgres:postgres@localhost:5432/henna"
-    }
   ]
+
+  // Bringing your own PostgreSQL instead of D1? Replace d1_databases above with:
+  // "hyperdrive": [
+  //   { "binding": "HYPERDRIVE", "id": "<HYPERDRIVE_CONFIG_ID>" }
+  // ]
+  // and set HENNA_DB_KIND=postgres. See docs/cloudflare-deployment.md.
 }

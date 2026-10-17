@@ -1,3 +1,4 @@
+import { createHmac } from "node:crypto";
 import { z } from "zod";
 import type { RootEnv } from "./schema";
 import { rootEnvSchema } from "./schema";
@@ -146,9 +147,53 @@ export function getJwtSecret(): string {
   return getRootConfig().jwt_secret;
 }
 
-/** Comma separated AES-256-GCM keyring. */
+/**
+ * Comma separated AES-256-GCM keyring.
+ *
+ * Falls back to a key derived from `jwt_secret` when the variable is not set,
+ * so that a Cloudflare deploy needs only DOMAIN, ADMIN and jwt_secret. The
+ * derivation is HKDF-SHA256 with a fixed, purpose-specific info string, so the
+ * result is an independent 32-byte key rather than a reuse of the signing
+ * secret.
+ *
+ * The trade-off is worth stating plainly: deriving means rotating `jwt_secret`
+ * also rotates the credential key, which invalidates stored credentials unless
+ * you keep the old key in the keyring during the change. Setting
+ * `HENNA_CREDENTIAL_KEY` explicitly decouples the two, and is recommended for
+ * anything long-lived.
+ */
 export function getCredentialKeyRaw(): string {
-  return getRootConfig().HENNA_CREDENTIAL_KEY;
+  const explicit = getRootConfig().HENNA_CREDENTIAL_KEY;
+  if (explicit && explicit.trim() !== "") return explicit;
+  return deriveCredentialKey(getRootConfig().jwt_secret);
+}
+
+/** Same derivation as `getCredentialKeyRaw()`, exposed for tests and docs. */
+export function deriveCredentialKey(jwtSecret: string): string {
+  return hkdfBase64(jwtSecret, "henna-credential-key-v1", 32);
+}
+
+/**
+ * HKDF-SHA256 (RFC 5869), implemented with HMAC so it runs on both Node.js and
+ * Workers without pulling in a dependency.
+ */
+function hkdfBase64(ikm: string, info: string, length: number): string {
+  const salt = Buffer.from("henna", "utf8");
+  const prk = createHmac("sha256", salt).update(Buffer.from(ikm, "utf8")).digest();
+
+  const out: Buffer[] = [];
+  let total = 0;
+  let block = Buffer.alloc(0);
+  let counter = 1;
+  while (total < length) {
+    block = createHmac("sha256", prk)
+      .update(Buffer.concat([block, Buffer.from(info, "utf8"), Buffer.from([counter])]))
+      .digest();
+    out.push(block);
+    total += block.length;
+    counter += 1;
+  }
+  return Buffer.concat(out).subarray(0, length).toString("base64");
 }
 
 export function isProduction(): boolean {

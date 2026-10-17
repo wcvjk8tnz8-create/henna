@@ -11,8 +11,6 @@ import { AUDIT_ACTIONS } from "@/lib/audit/events";
 import { formDataToObject } from "@/lib/validation/schemas";
 import { storageConfigPatchSchema } from "@/lib/storage/config";
 import { updateStorageConfig } from "@/lib/dal/storage";
-import { buildRequestContext } from "@/lib/request";
-import { headers } from "next/headers";
 import type { AuthMethod } from "@/lib/config/schema";
 
 /**
@@ -184,7 +182,7 @@ export async function saveStorageConfig(formData: FormData): Promise<AdminResult
   );
 
   revalidatePath("/admin/settings");
-  return result.ok ? { ok: true, message: "Storage settings saved." } : result;
+  return result.ok ? { ok: true, message: "Storage settings saved." } : { ok: false, message: result.reason };
 }
 
 function providerIsS3(value: unknown): boolean {

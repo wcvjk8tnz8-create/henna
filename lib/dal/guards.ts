@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { totpSecrets } from "@/db/schema";
 import { writeAudit } from "@/lib/audit/log";
-import { AUDIT_ACTIONS } from "@/lib/audit/events";
+import { AUDIT_ACTIONS, type AuditAction } from "@/lib/audit/events";
 import { getInstanceSettings } from "@/lib/config/settings";
 import { buildRequestContext } from "@/lib/request";
 import { evaluateMfaRequirement } from "./policy";
@@ -28,7 +28,8 @@ async function requestContext() {
 }
 
 async function auditDenial(input: {
-  action: typeof AUDIT_ACTIONS.ACCESS_DENIED;
+  /** Any denial action; ACCESS_DENIED is the default. */
+  action?: AuditAction;
   principal: Principal | null;
   reason: string;
   resourceType?: string;
@@ -36,7 +37,7 @@ async function auditDenial(input: {
 }): Promise<void> {
   const ctx = await requestContext();
   await writeAudit({
-    action: input.action,
+    action: input.action ?? AUDIT_ACTIONS.ACCESS_DENIED,
     result: "denied",
     actorId: input.principal?.userId ?? null,
     actorEmail: input.principal?.email ?? null,
@@ -110,7 +111,7 @@ export async function requireMfaIfRequired(principal: Principal): Promise<Princi
 
   if (decision.required && !principal.mfaSatisfied) {
     await auditDenial({
-      action: AUDIT_ACTIONS.TOTP_REQUIRED_DENIED,
+      action: AUDIT_ACTIONS.TOTP_REQUIRED_DENIED as AuditAction,
       principal,
       reason: decision.reason,
       resourceType: "session",
@@ -196,3 +197,6 @@ export function redirectTargetFor(error: AuthzError): string {
       return "/login?error=denied";
   }
 }
+
+/** Re-exported so callers can import the guard and the error together. */
+export { AuthzError } from "./types";

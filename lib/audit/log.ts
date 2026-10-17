@@ -34,6 +34,16 @@ export class AuditError extends Error {
   override readonly name = "AuditError";
 }
 
+/** JSON text, or null. Never throws: a bad context must not lose the event. */
+function serializeMetadata(metadata: Record<string, unknown> | null): string | null {
+  if (metadata === null) return null;
+  try {
+    return JSON.stringify(metadata);
+  } catch {
+    return null;
+  }
+}
+
 function scrub(metadata: Record<string, unknown> | undefined): Record<string, unknown> | null {
   if (!metadata) return null;
   const cleaned: Record<string, unknown> = {};
@@ -71,7 +81,8 @@ export async function writeAudit(event: AuditEvent): Promise<void> {
     resourceId: event.resourceId ?? null,
     ipHash: event.ipHash ?? null,
     userAgentHash: event.userAgentHash ?? null,
-    metadata: scrub(event.metadata),
+    // JSON text on both dialects; see the note in db/schema.pg.ts.
+    metadata: serializeMetadata(scrub(event.metadata)),
   });
 }
 
@@ -144,7 +155,7 @@ export async function queryAuditLog(query: AuditQuery): Promise<AuditPage> {
       result: row.result,
       ipHash: row.ipHash,
       userAgentHash: row.userAgentHash,
-      metadata: row.metadata ?? null,
+      metadata: parseMetadata(row.metadata),
     })),
     total: Number(totals[0]?.value ?? 0),
   };
@@ -152,3 +163,15 @@ export async function queryAuditLog(query: AuditQuery): Promise<AuditPage> {
 
 export { AUDIT_ACTIONS };
 export type { AuditAction, AuditEvent, AuditResult } from "./events";
+
+/** Decode the metadata column. A corrupt value yields null, never a throw. */
+function parseMetadata(raw: string | null | undefined): Record<string, unknown> | null {
+  if (typeof raw !== "string" || raw.trim() === "") return null;
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return null;
+    return parsed as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}

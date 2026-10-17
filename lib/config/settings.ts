@@ -68,7 +68,7 @@ export async function getInstanceSettings(): Promise<InstanceSettings> {
   const parsed = instanceSettingsSchema.safeParse({
     ...DEFAULT_INSTANCE_SETTINGS,
     ...envFallbacks(),
-    ...((row?.payload ?? {}) as Partial<InstanceSettings>),
+    ...parsePayload(row?.payload),
   });
 
   const value = parsed.success ? parsed.data : DEFAULT_INSTANCE_SETTINGS;
@@ -200,7 +200,7 @@ export async function updateInstanceSettings(
     .insert(instanceSettingsTable)
     .values({
       id: 1,
-      payload,
+      payload: JSON.stringify(payload),
       updatedBy: actorId ?? undefined,
       updatedAt: new Date(),
       ...secretPatch,
@@ -208,7 +208,7 @@ export async function updateInstanceSettings(
     .onConflictDoUpdate({
       target: instanceSettingsTable.id,
       set: {
-        payload,
+        payload: JSON.stringify(payload),
         updatedBy: actorId ?? undefined,
         updatedAt: new Date(),
         ...(Object.keys(secretPatch).length > 0 ? secretPatch : {}),
@@ -235,3 +235,23 @@ export async function getSecretKeyIds(): Promise<{
     resendApiKeyKeyId: row?.resendApiKeyKeyId ?? null,
   };
 }
+
+/**
+ * Decode the settings payload.
+ *
+ * Stored as JSON text on both PostgreSQL and D1, so the encode/decode is
+ * explicit rather than relying on a `jsonb` column. A corrupt or hand-edited
+ * value degrades to "no overrides" instead of throwing during boot.
+ */
+function parsePayload(raw: string | null | undefined): Partial<InstanceSettings> {
+  if (typeof raw !== "string" || raw.trim() === "") return {};
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+    return parsed as Partial<InstanceSettings>;
+  } catch {
+    return {};
+  }
+}
+
+export type { InstanceSettings, UpdateSettingsInput } from "./schema";
