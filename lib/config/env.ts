@@ -1,5 +1,6 @@
 import { createHmac } from "node:crypto";
 import { z } from "zod";
+import { getCloudflareVars } from "@/db/runtime";
 import type { RootEnv } from "./schema";
 import { rootEnvSchema } from "./schema";
 
@@ -75,14 +76,40 @@ export function assertNoSecretIsPublic(env: Record<string, string | undefined>):
 /**
  * Source of environment values.
  *
- * On Cloudflare Workers, OpenNext populates `process.env` from wrangler
- * variables and secrets at runtime, so a single lookup path is enough. This
- * indirection exists so tests can inject values without touching globals.
+ * The Cloudflare binding wins over `process.env`, and the two are merged.
+ *
+ * This matters more than it looks. Dashboard secrets are objects on the
+ * Worker's `env`, and OpenNext does not populate `process.env` from them
+ * uniformly: a Route Handler can see them while a Server Component rendered in
+ * the same deployment cannot. That is exactly the bug this replaces —
+ * `/api/health` reported `status: ok` with all three root variables present,
+ * while the sign-in page, in the same deployment, saw all three as undefined.
+ *
+ * Reading the binding first makes the lookup path identical everywhere.
  */
-let envSource: () => Record<string, string | undefined> = () => process.env;
+let envSource: () => Record<string, string | undefined> = () => mergeEnvSources();
+
+function mergeEnvSources(): Record<string, string | undefined> {
+  const merged: Record<string, string | undefined> = { ...process.env };
+  try {
+    // db/runtime.ts imports nothing, so this cannot form a cycle.
+    for (const [name, value] of Object.entries(getCloudflareVars())) {
+      if (value !== undefined && value !== "") merged[name] = value;
+    }
+  } catch {
+    // Not on Cloudflare, or bindings unavailable: process.env is all there is.
+  }
+  return merged;
+}
 
 export function setEnvSource(source: () => Record<string, string | undefined>): void {
   envSource = source;
+  resetEnvCache();
+}
+
+/** Restore the default source — the merged Cloudflare-binding/process.env view. */
+export function resetEnvSource(): void {
+  envSource = () => mergeEnvSources();
   resetEnvCache();
 }
 

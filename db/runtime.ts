@@ -98,6 +98,23 @@ export function getD1Binding(): D1Binding | null {
   return getCloudflareEnv()?.DB ?? null;
 }
 
+/**
+ * Every variable and binding visible on the Worker's `env`.
+ *
+ * Used as the primary source of root configuration. Dashboard secrets live
+ * here as plain string properties, which is why this is more reliable on
+ * Workers than `process.env` — see lib/config/env.ts.
+ */
+export function getCloudflareVars(): Record<string, string | undefined> {
+  const env = getCloudflareEnv();
+  if (!env) return {};
+  const out: Record<string, string | undefined> = {};
+  for (const [name, value] of Object.entries(env as Record<string, unknown>)) {
+    if (typeof value === "string") out[name] = value;
+  }
+  return out;
+}
+
 export function detectRuntime(): RuntimeKind {
   const cf = getCloudflareEnv();
   if (cf?.DB) return "workers-d1";
