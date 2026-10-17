@@ -76,6 +76,34 @@ export async function getInstanceSettings(): Promise<InstanceSettings> {
   return value;
 }
 
+/**
+ * Instance settings that never throw.
+ *
+ * Used by the sign-in and registration pages, which must render even when the
+ * database is unreachable — otherwise a fresh deploy with a broken binding is a
+ * blank page that tells the operator nothing.
+ *
+ * Password stays enabled in the fallback because it is the one method needing
+ * no external service. Everything else is switched off rather than advertised
+ * and then failing. The rest of the values sit at the safe end of their range.
+ */
+export async function getSafeInstanceSettings(): Promise<InstanceSettings> {
+  try {
+    return await getInstanceSettings();
+  } catch {
+    return {
+      ...DEFAULT_INSTANCE_SETTINGS,
+      authMethods: ["password"],
+      registrationMode: "closed",
+      totpPolicy: "admin-only",
+      passwordMinLength: 12,
+      passwordRequireComplexity: true,
+      githubConfigured: false,
+      resendConfigured: false,
+    } as InstanceSettings;
+  }
+}
+
 export interface InstanceSecrets {
   readonly githubClientSecret: string | null;
   readonly resendApiKey: string | null;

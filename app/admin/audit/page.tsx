@@ -5,6 +5,17 @@ import { exportAuditLog, readAuditLog } from "@/lib/dal/audit";
 import { parseInput, auditQuerySchema, paramsToObject } from "@/lib/validation/schemas";
 import { validateCsrfToken, CSRF_COOKIE, CSRF_HEADER } from "@/lib/security/csrf";
 
+
+/**
+ * Never prerendered.
+ *
+ * This page reads the database, and at build time there is none: no D1 binding,
+ * no DATABASE_URL, no Hyperdrive. Next prerendering it anyway killed the build
+ * with "No database configured" — a build-time failure for a runtime-only
+ * reason. Pages that read the database all need this.
+ */
+export const dynamic = "force-dynamic";
+
 /**
  * Audit log page and export endpoint.
  *
