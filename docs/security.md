@@ -1,5 +1,7 @@
 # Henna security model
 
+**[English](security.md) | [简体中文](security.zh-CN.md)**
+
 This document states what Henna protects against, how, and — just as importantly
 — what it does not.
 
@@ -110,6 +112,18 @@ materially smaller blast radius than a mail-storing server.
       URLs are refused.
 - [x] SSRF: endpoint discovery only probes hosts from the instance allow-list.
 
+### Attachment storage
+
+- [x] Attachment bytes never reach the server: the browser uses presigned URLs
+      against the bucket directly.
+- [x] Keys are generated server-side under `users/<userId>/` and re-checked
+      before every download.
+- [x] Path traversal and absolute keys are rejected; filenames are sanitised;
+      content types are validated against a strict grammar, because a newline
+      would be header injection into the signed request.
+- [x] URL issuance is rate limited, and every grant and denial is audited.
+- [x] Bucket credentials are encrypted at rest, in dedicated columns.
+
 ### Mail rendering
 
 - [x] Message HTML is sanitised against a tag and attribute allow-list.
@@ -148,7 +162,7 @@ materially smaller blast radius than a mail-storing server.
 - [x] Append-only, enforced by a database trigger as well as by convention.
 - [x] Covers sign-in success and failure, denials, code issue and verification,
       password reset, TOTP lifecycle, recovery-code use, credential decryption,
-      administrative actions, key rotation.
+      storage URL issuance, administrative actions, key rotation.
 - [x] Never records a password, a code, a TOTP value or a decrypted credential.
       `writeAudit` redacts a denylist of metadata keys as a backstop.
 - [x] Stores hashed IP and user-agent, never the raw values.
@@ -172,8 +186,11 @@ materially smaller blast radius than a mail-storing server.
 5. **Rate-limit counters live in PostgreSQL.** That is correct for correctness
    across isolates, but it means a database outage also disables rate limiting.
    Henna fails closed: if the counter cannot be read, the request is refused.
-6. **`jwt_secret` rotation logs everyone out.** This is intentional. Plan it.
-7. **No WebAuthn/passkeys yet.** GitHub OAuth plus TOTP is the ceiling today.
+6. **The attachment size cap is advisory at the protocol level.** A
+   query-string presigned URL cannot carry a `content-length-range`; see
+   [storage.md](storage.md#known-limitations).
+7. **`jwt_secret` rotation logs everyone out.** This is intentional. Plan it.
+8. **No WebAuthn/passkeys yet.** GitHub OAuth plus TOTP is the ceiling today.
 
 ---
 

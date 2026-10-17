@@ -1,0 +1,197 @@
+# 部署 Henna 到 Cloudflare Workers
+
+**[English](cloudflare-deployment.md) | [简体中文](cloudflare-deployment.zh-CN.md)**
+
+Henna 通过 [`@opennextjs/cloudflare`](https://opennext.js.org/cloudflare) 部署到
+Workers。本文覆盖适配器、Hyperdrive、Workers Secrets、Resend DNS 与 GitHub Actions
+流水线。
+
+---
+
+## 1. Workers 上什么能跑，什么不能
+
+| 组件 | Workers | 说明 |
+| --- | --- | --- |
+| Next.js App Router（SSR、Server Actions、Route Handlers） | 可以 | 通过 OpenNext |
+| `node:crypto`（scrypt、AES-256-GCM、HMAC） | 可以 | 需要 `nodejs_compat` |
+| TOTP（`otpauth`） | 可以 | 纯 TypeScript，无原生代码 |
+| PostgreSQL via Hyperdrive | 可以 | 见第 3 节 |
+| 浏览器直连 JMAP | 可以 | 浏览器直连上游 |
+| 对象存储附件（预签名 URL） | 可以 | 浏览器直连 R2 / S3 |
+| 服务端 IMAP/SMTP | **不行** | Workers 没有裸 TCP |
+| Node.js Middleware | **不行** | 见第 2 节 —— 它本来就不是安全边界 |
+
+**关于 IMAP/SMTP 的取舍，直接说明。** Workers 无法开启 TCP 连接，所以
+`imapflow` 与 `nodemailer` 在那里跑不起来。Henna 没有假装支持，而是诚实地划分范围：
+
+- **Workers**：只支持 JMAP。IMAP/SMTP 选项会隐藏，界面会说明原因。
+- **自托管 Node.js**：两条路都可用，SMTP 限制在 587/465，25 端口直接拒用。
+
+`lib/mail/protocol.ts` 用 `supportsImapFallback(runtime)` 把这处判断收在一处。
+
+## 2. 为什么 Middleware 不是闸门
+
+Next.js 的 Node.js middleware 在 Workers 上不执行。Henna 从未依赖它做安全判定，
+所以这不是需要迁移的问题，而是本就如此：
+
+- 每个受保护的 Server Action、Route Handler 与 Server Component 都调用 DAL 守卫
+  （`requirePrincipal`、`requireAdmin`、`requireOwnershipOrAdmin`）。
+- `middleware.ts` 只做乐观重定向 —— 省掉已登录用户的一次无谓渲染。删掉它，
+  安全性不变。
+
+值得对所有审代码的人重复一遍：**如果你发现某个访问控制只存在于 middleware，
+那是 bug。**
+
+## 3. Hyperdrive
+
+Workers 无法像 Node.js 那样使用长连接的 `pg` 连接池，因此 Henna 通过 Hyperdrive 连接。
+
+```bash
+npx wrangler hyperdrive create henna-db \
+  --connection-string="postgres://user:pass@db.example.com:5432/henna"
+```
+
+把返回的 ID 填进 `wrangler.jsonc`：
+
+```jsonc
+"hyperdrive": [
+  {
+    "binding": "HYPERDRIVE",
+    "id": "<HYPERDRIVE_CONFIG_ID>"
+  }
+]
+```
+
+Henna 读取 `env.HYPERDRIVE.connectionString`，并且**绝不调用 `pool.end()`** ——
+连接生命周期由平台管理。`db/index.ts` 用一个工厂函数在 Hyperdrive 与
+`DATABASE_URL` 之间切换。
+
+## 4. `wrangler.jsonc`
+
+```jsonc
+{
+  "name": "henna",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2024-09-23",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
+  "vars": {
+    "DOMAIN": "[\"example.com\"]",
+    "ADMIN": "root@example.com",
+    "HENNA_TRUST_PROXY": "1"
+  },
+  "r2_buckets": [
+    { "binding": "ATTACHMENTS", "bucket_name": "henna-attachments" }
+  ],
+  "hyperdrive": [{ "binding": "HYPERDRIVE", "id": "<HYPERDRIVE_CONFIG_ID>" }]
+}
+```
+
+`compatibility_date` 必须 **2024-09-23 或之后**，`nodejs_compat` 必须开启 ——
+否则 `node:crypto` 的 scrypt 不可用，所有口令操作都会失败。
+
+## 5. Workers Secrets
+
+普通变量放 `vars`，密钥绝不放：
+
+```bash
+npx wrangler secret put jwt_secret
+npx wrangler secret put HENNA_CREDENTIAL_KEY
+# 若改为在 /admin/settings 配置，以下可跳过：
+npx wrangler secret put GITHUB_CLIENT_SECRET
+npx wrangler secret put RESEND_API_KEY
+npx wrangler secret put HENNA_R2_ACCOUNT_ID
+```
+
+这里粘贴的值由 Cloudflare 加密并在运行时注入，不会进入仓库，也不会出现在构建产物里。
+
+## 6. Resend 与 DNS
+
+1. 在 Resend 添加发信域名。
+2. 按它给出的记录添加 DNS：
+   - **SPF** —— 授权 Resend 的 `TXT` 记录。
+   - **DKIM** —— 指定选择器的 `CNAME`（或 `TXT`）记录。
+   - **DMARC** —— `_dmarc` 上的 `TXT` 记录，先 `p=none`，确认正常邮件对齐后再收紧。
+3. 等待验证（通常几分钟，偶尔几小时）。
+4. 把 API Key 与 `From` 地址填到 `/admin/settings`。
+
+Henna 会展示上游的 SPF/DKIM/DMARC 判定结果，并且不会淡化失败信号。展示质量取决于
+你域名的记录 —— 没有 DMARC 策略，就没有策略可通过。
+
+## 7. 附件存储（CSP 前提）
+
+附件走预签名 URL，浏览器直连存储桶。因为 Workers 没有按请求中间件，CSP 是静态下发的，
+所以存储桶的源必须在**构建时**已知：
+
+```bash
+# 在仓库 Secrets 里配置其一
+HENNA_R2_ACCOUNT_ID=0123456789abcdef0123456789abcdef
+# 或
+HENNA_STORAGE_ORIGINS=https://<account>.r2.cloudflarestorage.com
+```
+
+只通过 `/admin/settings` 配置存储桶而不设这两项，浏览器会被 CSP 拦住，上传失败。
+完整说明见 [storage.zh-CN.md](storage.zh-CN.md)。
+
+`r2_buckets` 绑定是可选的 —— Henna 不代理附件字节，给出它只是方便需要在 Worker
+内直接访问存储桶的运维场景。
+
+## 8. GitHub Actions 流水线
+
+`.github/workflows/deploy.yml` 在每次推送到 `main` 时执行：
+
+```
+安装依赖 → tsc --noEmit → biome → 单元测试 → Playwright E2E
+                                                  ↓（仅当全绿）
+                                  opennextjs-cloudflare build → wrangler deploy
+```
+
+`deploy` job 声明了 `needs: quality`。类型检查、代码检查或测试任一失败，都不会部署。
+
+**仓库 Secrets**（*Settings → Secrets and variables → Actions*）：
+
+| Secret | 必需 | 用途 |
+| --- | --- | --- |
+| `CLOUDFLARE_API_TOKEN` | 是 | 部署凭证，仅 CI |
+| `CLOUDFLARE_ACCOUNT_ID` | 是 | 目标账户 |
+| `DOMAIN` | 是 | 邮件域名的 JSON 数组 |
+| `ADMIN` | 是 | 引导管理员 |
+| `JWT_SECRET` | 是 | 会话签名密钥 |
+| `HENNA_CREDENTIAL_KEY` | 是 | 凭证加密密钥 |
+| `HENNA_R2_ACCOUNT_ID` | 否 | 附件存储的 CSP 放行 |
+| `HENNA_STORAGE_ORIGINS` | 否 | 同上，直接列源 |
+| `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | 否 | 改用 `/admin/settings` |
+| `RESEND_API_KEY` / `HENNA_EMAIL_FROM` | 否 | 改用 `/admin/settings` |
+
+部署步骤使用 `cloudflare/wrangler-action@v4`。
+
+## 9. Workers 上首次启动
+
+1. 访问 `https://your-worker.workers.dev/api/health`。返回 503 并带 `issues` 数组，
+   会明确告诉你缺哪个根变量。
+2. 修好、重新部署、刷新，直到看到 `"status": "ok"`。
+3. 用邮箱验证码以 `ADMIN` 登录，设置密码，启用 TOTP。
+4. 在 `/admin/settings` 配置 GitHub OAuth、Resend 与对象存储。
+5. 把 `AUTH_URL` 设成真实源 —— GitHub 回调地址由此推导，必须与 OAuth 应用完全一致。
+
+## 10. 本地开发
+
+```bash
+cp .dev.vars.example .dev.vars   # 填入
+npm run preview                  # opennextjs-cloudflare build && wrangler dev
+```
+
+`wrangler dev` 在本地带上绑定运行 Worker，可以在部署前验证 Hyperdrive 路径。
+纯界面开发用 `npm run dev`（原生 Next.js）更快。
+
+## 11. 回滚
+
+Workers 保留历史部署。回滚可以重跑某个较早提交的流水线，或直接部署已知可用的构建：
+
+```bash
+git checkout <known-good-sha>
+npm run deploy
+```
+
+如果问题部署涉及凭证密钥变更，请记住：回滚**代码**不会回滚**密钥**。在确认不需要
+回滚之前，把旧密钥保留在 `HENNA_CREDENTIAL_KEY` 里。

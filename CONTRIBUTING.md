@@ -1,5 +1,7 @@
 # Contributing to Henna
 
+**[English](../CONTRIBUTING.md) | [简体中文](../CONTRIBUTING.zh-CN.md)**
+
 Thanks for helping. Henna is security-sensitive software, so this document is
 mostly about what *not* to do.
 
@@ -77,6 +79,7 @@ Changes touching any of these paths need **two approving reviewers**, at least o
 of whom is a maintainer:
 
 - `lib/dal/` — authorisation
+- `lib/storage/` — object storage signing and keys
 - `lib/crypto/` — encryption, key management, randomness
 - `lib/auth/` — authentication, sessions, TOTP, codes
 - `middleware.ts` — request filtering
@@ -103,6 +106,9 @@ Please do not spend your time building these; they will be declined.
   generic OIDC, or mailbox-provider OAuth. This is a deliberate constraint.
 - **Anything that stores mail content server-side.** No message table, no
   attachment table, no server-side full-text index. This is the architecture.
+- **Anything that moves attachment bytes through the server.** Uploads and
+  downloads go browser ↔ bucket via presigned URLs; a change that makes Henna
+  receive or retain a file body will be rejected.
 - **Magic-link sign-in as a primary method**, or username/password flows that
   bypass the password policy.
 - **Disabling or weakening Next.js's Server Action CSRF protection.**

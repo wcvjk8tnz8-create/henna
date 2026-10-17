@@ -57,6 +57,13 @@ export const AUDIT_ACTIONS = {
   ADMIN_USER_UNLOCKED: "admin.user.unlocked",
   ADMIN_AUDIT_EXPORTED: "admin.audit.exported",
 
+  /* Object storage */
+  STORAGE_CONFIG_UPDATED: "storage.config.updated",
+  STORAGE_UPLOAD_URL_ISSUED: "storage.upload_url.issued",
+  STORAGE_DOWNLOAD_URL_ISSUED: "storage.download_url.issued",
+  STORAGE_URL_DENIED: "storage.url.denied",
+  STORAGE_OBJECT_DELETED: "storage.object.deleted",
+
   /* Authorisation failures */
   ACCESS_DENIED: "authz.denied",
   CSRF_REJECTED: "authz.csrf_rejected",
@@ -97,6 +104,8 @@ const FORBIDDEN_METADATA_KEYS: readonly string[] = [
   "secretEnc",
   "clientSecret",
   "apiKey",
+  "accessKeyId",
+  "secretAccessKey",
   "credential",
   "refreshToken",
   "sessionToken",

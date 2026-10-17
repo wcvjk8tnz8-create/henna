@@ -4,6 +4,8 @@ import { getInstanceSettings, getSecretKeyIds } from "@/lib/config/settings";
 import { getKeyRotationStatus } from "@/lib/crypto/keyring";
 import { getAdminEmail, getMailDomains } from "@/lib/config/env";
 import { AdminSettingsForm } from "./admin-settings-form";
+import { StorageForm } from "./storage-form";
+import { getStorageStatus } from "@/lib/dal/storage";
 
 export const metadata = { title: "Instance settings" };
 
@@ -24,10 +26,11 @@ export default async function AdminSettingsPage() {
     throw error;
   }
 
-  const [settings, secretKeyIds, rotation] = await Promise.all([
+  const [settings, secretKeyIds, rotation, storage] = await Promise.all([
     getInstanceSettings(),
     getSecretKeyIds(),
     Promise.resolve(getKeyRotationStatus()),
+    getStorageStatus(),
   ]);
 
   return (
@@ -95,6 +98,10 @@ export default async function AdminSettingsPage() {
         }}
         actorId={admin.userId}
       />
+
+      <hr className="my-10 border-neutral-200 dark:border-neutral-800" />
+
+      <StorageForm initial={storage} />
     </main>
   );
 }

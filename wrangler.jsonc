@@ -25,6 +25,16 @@
   //   npx wrangler secret put GITHUB_CLIENT_SECRET   (optional; UI alternative)
   //   npx wrangler secret put RESEND_API_KEY         (optional; UI alternative)
 
+  // Attachments. Presigned URLs are used for browser <-> bucket traffic, so the
+  // binding is optional: it is here for operators who want bucket access from
+  // the Worker itself. Henna does not proxy attachment bytes.
+  "r2_buckets": [
+    {
+      "binding": "ATTACHMENTS",
+      "bucket_name": "henna-attachments"
+    }
+  ],
+
   "hyperdrive": [
     {
       "binding": "HYPERDRIVE",

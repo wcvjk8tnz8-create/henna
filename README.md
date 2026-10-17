@@ -1,5 +1,7 @@
 # Henna
 
+**[English](README.md) | [简体中文](README.zh-CN.md)**
+
 Henna is a security-first, self-hostable webmail frontend. It is a mail *client*
 and a thin credential coordinator — not a mail store. Your messages, attachments
 and search index never land on Henna's server.
@@ -48,6 +50,13 @@ in between keeps a copy.
 - Covers sign-ins, denials, password resets, TOTP events, credential decryption
   and administrative actions.
 - Never contains a password, a code or a decrypted secret.
+
+**Attachments that never touch the server**
+
+- Cloudflare R2 by default, any S3-compatible bucket if you prefer.
+- The browser uploads and downloads through short-lived presigned URLs. Henna
+  signs the request; the bytes go browser ↔ bucket and nowhere else.
+- Every URL is scoped to one user's key prefix, rate limited and audited.
 
 **Mail that stays yours**
 
@@ -124,10 +133,28 @@ fails, nothing is deployed.
    | `ADMIN` | Bootstrap administrator email |
    | `JWT_SECRET` | Session signing key, letters and digits only |
    | `HENNA_CREDENTIAL_KEY` | base64 of 32 random bytes |
+   | `HENNA_STORAGE_ORIGINS` | Bucket origins allowed by the CSP (see § below) |
    | `HENNA_CREDENTIAL_KEY`*, `GITHUB_CLIENT_SECRET`, `RESEND_API_KEY` | Optional if you will configure them in `/admin/settings` |
 
 5. **Push to `main`.** The `quality` job gates the `deploy` job; a red check means
    no deployment.
+
+## Attachments and object storage
+
+Henna uses object storage for attachments, with **Cloudflare R2** as the default
+and **any S3-compatible service** (AWS S3, MinIO, Backblaze B2, Hetzner, Wasabi)
+as a supported alternative. Both speak the same presigned SigV4 protocol, so one
+implementation covers all of them.
+
+The flow is deliberately narrow:
+
+1. The browser asks Henna for an upload URL, sending only a filename and a size.
+2. The DAL checks the size, generates a key under `users/<id>/…`, signs a PUT
+   URL that expires in minutes, and records the audit event.
+3. The browser PUTs the file straight to the bucket.
+
+Henna never receives the bytes. See [docs/storage.md](docs/storage.md) for
+bucket setup, CORS and the CSP prerequisite.
 
 ## Documentation
 
@@ -137,7 +164,9 @@ fails, nothing is deployed.
 | [docs/cloudflare-deployment.md](docs/cloudflare-deployment.md) | OpenNext, Hyperdrive, Workers secrets, Resend DNS |
 | [docs/security.md](docs/security.md) | Threat model, control checklist, known limits, disclosure |
 | [docs/architecture.md](docs/architecture.md) | Data-flow diagrams and the mail-content boundary |
+| [docs/storage.md](docs/storage.md) | R2 and S3-compatible attachment storage |
 | [docs/licenses.md](docs/licenses.md) | Dependency licences and compatibility review |
+| [docs/README.md](docs/README.md) | Documentation index, in both languages |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Coding standards and review rules for security-critical paths |
 
 ## Security

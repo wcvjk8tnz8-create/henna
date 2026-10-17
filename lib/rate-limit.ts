@@ -50,6 +50,8 @@ export const RATE_LIMIT_RULES = {
     windowSeconds: 900,
     blockSeconds: 300,
   },
+  /** Presigned URL issuance: cheap to sign, but not free to hand out. */
+  storageUrl: { scope: "storage-url", limit: 120, windowSeconds: 900, blockSeconds: 300 },
 } as const satisfies Record<string, RateLimitRule>;
 
 export function rateLimitKey(rule: RateLimitRule, subject: string): string {

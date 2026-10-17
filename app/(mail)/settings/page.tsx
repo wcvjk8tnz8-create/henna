@@ -7,6 +7,8 @@ import { getOwnProfile } from "@/lib/dal/users";
 import { getMailDomains } from "@/lib/config/env";
 import { SecurityPanel } from "./security-panel";
 import { CredentialPanel } from "./credential-panel";
+import { AttachmentsPanel } from "./attachments-panel";
+import { getPublicStorageStatus, listStorageObjects } from "@/lib/dal/storage";
 import { PreferencePanel } from "./preference-panel";
 
 export const metadata = { title: "Settings" };
@@ -20,11 +22,13 @@ export default async function SettingsPage() {
     throw error;
   }
 
-  const [profile, totp, settings, credentials] = await Promise.all([
+  const [profile, totp, settings, credentials, storage, objects] = await Promise.all([
     getOwnProfile(principal),
     getTotpStatus(principal),
     getUserSettings(principal),
     listCredentials(principal),
+    getPublicStorageStatus(),
+    listStorageObjects(principal),
   ]);
 
   if (!profile) redirect("/login");
@@ -67,6 +71,18 @@ export default async function SettingsPage() {
           username: c.username,
         }))}
         mailDomains={[...getMailDomains()]}
+      />
+
+      <AttachmentsPanel
+        enabled={storage.enabled}
+        maxUploadBytes={storage.maxUploadBytes}
+        initial={objects.map((object) => ({
+          id: object.id,
+          filename: object.filename,
+          contentType: object.contentType,
+          sizeBytes: object.sizeBytes,
+          createdAt: object.createdAt.toISOString(),
+        }))}
       />
     </main>
   );

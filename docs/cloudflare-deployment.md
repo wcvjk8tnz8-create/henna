@@ -1,5 +1,7 @@
 # Deploying Henna to Cloudflare Workers
 
+**[English](cloudflare-deployment.md) | [简体中文](cloudflare-deployment.zh-CN.md)**
+
 Henna deploys to Workers through [`@opennextjs/cloudflare`](https://opennext.js.org/cloudflare).
 This document covers the adapter, Hyperdrive, Workers secrets, Resend DNS, and
 the GitHub Actions pipeline.

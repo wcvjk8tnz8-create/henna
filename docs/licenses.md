@@ -1,5 +1,7 @@
 # Dependency licences
 
+**[English](licenses.md) | [简体中文](licenses.zh-CN.md)**
+
 Henna is licensed under **AGPL-3.0-or-later**. Every dependency below is
 redistribution-compatible with it. This document records that review.
 
@@ -27,6 +29,16 @@ recorded here.
 | `resend` | MIT | Transactional email delivery |
 | `jmap-kit` | MIT | JMAP client used by the browser path |
 | `framer-motion` | MIT | Layered page transitions |
+
+### A note on SigV4
+
+Attachment signing deliberately does **not** use the AWS SDK.
+`@aws-sdk/s3-request-presigner` pulls a dependency tree that leans heavily on
+Node.js built-ins, is awkward on Cloudflare Workers, and is far more than Henna
+needs. Query-string SigV4 presigning is essentially HMAC plus hex encoding —
+about a hundred lines — and both primitives exist everywhere Henna runs. The
+implementation is cross-checked against the independent `aws4` signer in the
+test suite.
 
 ## Development dependencies
 

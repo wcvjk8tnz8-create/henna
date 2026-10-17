@@ -9,6 +9,10 @@ import { buildRequestContext } from "@/lib/request";
 import { writeAudit } from "@/lib/audit/log";
 import { AUDIT_ACTIONS } from "@/lib/audit/events";
 import { formDataToObject } from "@/lib/validation/schemas";
+import { storageConfigPatchSchema } from "@/lib/storage/config";
+import { updateStorageConfig } from "@/lib/dal/storage";
+import { buildRequestContext } from "@/lib/request";
+import { headers } from "next/headers";
 import type { AuthMethod } from "@/lib/config/schema";
 
 /**
@@ -142,4 +146,52 @@ function clampNumber(value: unknown, min: number, max: number, fallback: number)
   const parsed = typeof value === "string" || typeof value === "number" ? Number(value) : Number.NaN;
   if (!Number.isFinite(parsed)) return fallback;
   return Math.min(Math.max(Math.round(parsed), min), max);
+}
+
+/**
+ * Save the bucket configuration.
+ *
+ * `requireAdmin()` decides authorisation; this function only parses and forwards.
+ * A blank secret field means "keep the stored value", which is why it is
+ * filtered out rather than written as an empty string.
+ */
+export async function saveStorageConfig(formData: FormData): Promise<AdminResult> {
+  const admin = await requireAdmin();
+
+  const raw = formDataToObject(formData);
+  const mb = Number(raw.maxUploadBytesMb);
+  const parsed = storageConfigPatchSchema.safeParse({
+    provider: raw.provider,
+    enabled: formData.get("enabled") === "on",
+    endpoint: providerIsS3(raw.provider) ? optionalText(raw.endpoint) : undefined,
+    r2AccountId: providerIsS3(raw.provider) ? undefined : optionalText(raw.r2AccountId),
+    region: optionalText(raw.region) ?? undefined,
+    bucket: optionalText(raw.bucket),
+    accessKeyId: optionalText(raw.accessKeyId),
+    secretAccessKey: optionalText(raw.secretAccessKey),
+    forcePathStyle: formData.get("forcePathStyle") === "on",
+    maxUploadBytes: Number.isFinite(mb) && mb > 0 ? Math.round(mb * 1048576) : undefined,
+  });
+
+  if (!parsed.success) {
+    return { ok: false, message: parsed.error.issues[0]?.message ?? "Check the storage settings." };
+  }
+
+  const result = await updateStorageConfig(
+    admin,
+    parsed.data,
+    buildRequestContext(await headers()),
+  );
+
+  revalidatePath("/admin/settings");
+  return result.ok ? { ok: true, message: "Storage settings saved." } : result;
+}
+
+function providerIsS3(value: unknown): boolean {
+  return value === "s3";
+}
+
+/** An untouched field stays undefined so the stored value survives. */
+function optionalText(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() !== "" ? value.trim() : undefined;
 }

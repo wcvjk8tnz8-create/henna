@@ -339,3 +339,66 @@ export type MailCredentialRow = typeof mailCredentials.$inferSelect;
 export type TotpSecretRow = typeof totpSecrets.$inferSelect;
 export type RecoveryCodeRow = typeof recoveryCodes.$inferSelect;
 export type EmailOtpRow = typeof emailOtpCodes.$inferSelect;
+
+/* ------------------------------------------------------- object storage */
+
+/**
+ * Configuration for R2 or any S3-compatible bucket.
+ *
+ * The bucket credentials live in dedicated encrypted columns, never in a
+ * plaintext column, for the same reason as the mail credentials: a dump of this
+ * table must not hand over write access to someone's bucket.
+ */
+export const storageConfig = pgTable("storage_config", {
+  /** Singleton row; enforced by a check constraint in the migration. */
+  id: integer("id").primaryKey().default(1),
+  provider: text("provider").notNull().default("r2"),
+  enabled: integer("enabled").notNull().default(0),
+  /** Origin only. Derived from `r2AccountId` when empty and provider is r2. */
+  endpoint: text("endpoint"),
+  r2AccountId: text("r2_account_id"),
+  /** `auto` for R2; a real region for S3 and most S3-compatible services. */
+  region: text("region").notNull().default("auto"),
+  bucket: text("bucket"),
+  accessKeyIdEnc: text("access_key_id_enc"),
+  accessKeyIdKeyId: text("access_key_id_key_id"),
+  secretAccessKeyEnc: text("secret_access_key_enc"),
+  secretAccessKeyKeyId: text("secret_access_key_key_id"),
+  forcePathStyle: integer("force_path_style").notNull().default(1),
+  maxUploadBytes: integer("max_upload_bytes").notNull().default(26214400),
+  signedUrlTtlSeconds: integer("signed_url_ttl_seconds").notNull().default(300),
+  publicBaseUrl: text("public_base_url"),
+  updatedBy: uuid("updated_by"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/**
+ * Metadata about objects a user has put in the bucket.
+ *
+ * Note what is *not* here: no bytes, no inline content, nothing that could be
+ * read back as mail. Henna records that an object exists and where it lives;
+ * the object itself moves browser <-> bucket through a presigned URL.
+ */
+export const storageObjects = pgTable(
+  "storage_objects",
+  {
+    id: uuid("id")
+      .primaryKey()
+      .$defaultFn(() => randomUUID()),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    /** Always begins with `users/<userId>/`; enforced before signing. */
+    objectKey: text("object_key").notNull(),
+    purpose: text("purpose").notNull().default("attachment"),
+    /** The name shown in the UI; the stored key carries a UUID instead. */
+    filename: text("filename").notNull(),
+    contentType: text("content_type"),
+    sizeBytes: integer("size_bytes"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("storage_objects_key_unique").on(table.objectKey),
+    index("storage_objects_user_idx").on(table.userId),
+  ],
+);

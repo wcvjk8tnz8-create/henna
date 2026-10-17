@@ -16,8 +16,13 @@
 export interface HeaderContext {
   /** Per-request nonce for any inline script. */
   readonly nonce?: string;
-  /** Upstream origins the browser must be able to reach directly. */
+  /** Upstream mail origins the browser must be able to reach directly. */
   readonly mailOrigins?: readonly string[];
+  /**
+   * Object storage origins the browser PUTs and GETs attachments against.
+   * These belong in `connect-src` only — nothing from the bucket is framed.
+   */
+  readonly storageOrigins?: readonly string[];
 }
 
 function originOf(url: string): string | null {
@@ -38,6 +43,11 @@ export function buildContentSecurityPolicy(context: HeaderContext = {}): string 
       connectSources.add(origin);
       frameSources.add(origin);
     }
+  }
+
+  for (const raw of context.storageOrigins ?? []) {
+    const origin = originOf(raw);
+    if (origin && origin !== "null") connectSources.add(origin);
   }
 
   const scriptSrc = ["'self'"];

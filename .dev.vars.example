@@ -7,3 +7,10 @@ GITHUB_CLIENT_ID=
 GITHUB_CLIENT_SECRET=
 RESEND_API_KEY=
 HENNA_EMAIL_FROM=Henna <no-reply@example.com>
+
+# --- Object storage (attachments) -------------------------------------------
+# Optional when configured in /admin/settings instead. The CSP is emitted at
+# build time, so the bucket origin must be known here too if you want browser
+# uploads to be allowed without a redeploy after changing it in the UI.
+HENNA_R2_ACCOUNT_ID=
+HENNA_STORAGE_ORIGINS=https://<account>.r2.cloudflarestorage.com

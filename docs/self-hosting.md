@@ -1,5 +1,7 @@
 # Self-hosting Henna
 
+**[English](self-hosting.md) | [简体中文](self-hosting.zh-CN.md)**
+
 This guide covers running Henna on your own Node.js host. For Cloudflare
 Workers, see [cloudflare-deployment.md](cloudflare-deployment.md).
 

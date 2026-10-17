@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { tryGetRootConfig } from "@/lib/config/env";
 import { getKeyRotationStatus } from "@/lib/crypto/keyring";
+import { getStorageStatus } from "@/lib/dal/storage";
 
 /**
  * Health and configuration check.
@@ -12,6 +13,19 @@ import { getKeyRotationStatus } from "@/lib/crypto/keyring";
 export async function GET() {
   const config = tryGetRootConfig();
   const rotation = getKeyRotationStatus();
+
+  // Storage is optional, so a failure here must not mask the rest of the report.
+  let storage: { enabled: boolean; ready: boolean; issues: readonly string[] } = {
+    enabled: false,
+    ready: false,
+    issues: ["storage status unavailable"],
+  };
+  try {
+    const status = await getStorageStatus();
+    storage = { enabled: status.enabled, ready: status.ready, issues: status.issues };
+  } catch {
+    // Left at the fallback above.
+  }
 
   if (!config.ok) {
     return NextResponse.json(
@@ -37,6 +51,7 @@ export async function GET() {
         keyCount: rotation.keyCount,
         healthy: rotation.healthy,
       },
+      storage,
     },
     { headers: { "cache-control": "no-store" } },
   );

@@ -1,5 +1,7 @@
 # Henna architecture
 
+**[English](architecture.md) | [简体中文](architecture.zh-CN.md)**
+
 ## The boundary, stated once
 
 > **Mail content never passes through Henna's server.** Not message bodies, not
@@ -71,6 +73,10 @@ It is enforced structurally:
 ```
 Browser ──Bearer token──► https://jmap.example.com/jmap
 ```
+
+Attachments take a similar route of their own: the browser asks Henna to sign a
+short-lived URL, then reads and writes the bucket directly. See
+[storage.md](storage.md).
 
 Fallback discovery uses `/.well-known/jmap`, restricted to hosts on the instance
 allow-list — Henna will not probe a hostname a user typed.
