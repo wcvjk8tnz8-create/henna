@@ -61,6 +61,27 @@ The other failure mode is the opposite one: a plain `next build` produces no
 ERROR Could not find compiled Open Next config, did you run the build command?
 ```
 
+
+### Why `pg` is stubbed out of the Workers build
+
+If you deploy and the build dies with
+
+```
+✘ [ERROR] Could not resolve "pg-cloudflare"
+```
+
+the cause is that `pg` reached the Worker bundle. `pg` has a `workerd` export
+condition, so the bundler picks its Cloudflare entrypoint, which requires
+`pg-cloudflare` — and that package's published tarball is missing the `dist/` it
+declares. No Worker request would ever have executed it, since Henna uses D1,
+but the bundle fails anyway.
+
+The fix is that `pg` never enters a Workers bundle at all. `scripts/build.mjs`
+sets `HENNA_BUILD_TARGET=workers` before OpenNext invokes the Next build, and
+`next.config.ts` reacts by aliasing `pg` to `db/pg-unavailable.ts`, a module
+whose constructor throws. Self-hosted Node builds get the real `pg` and keep it
+in `serverExternalPackages`.
+
 ### 3. Add the three variables
 
 *Worker → Settings → Variables and Secrets → Add*

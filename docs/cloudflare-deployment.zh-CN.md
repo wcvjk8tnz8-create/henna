@@ -56,6 +56,24 @@ Fork `https://github.com/wcvjk8tnz8-create/henna`。Cloudflare 从**你的 fork*
 ERROR Could not find compiled Open Next config, did you run the build command?
 ```
 
+
+### 为什么 Workers 构建要把 `pg` 替换掉
+
+如果部署时构建死在
+
+```
+✘ [ERROR] Could not resolve "pg-cloudflare"
+```
+
+原因是 `pg` 进了 Worker 包。`pg` 带有 `workerd` 导出条件，打包器会选中它的
+Cloudflare 入口，而该入口依赖 `pg-cloudflare` —— 这个包发布的 tarball 里缺少它自己
+声明的 `dist/`。实际上没有任何 Worker 请求会执行到它（Henna 用的是 D1），但构建照样失败。
+
+修法是让 `pg` 根本不进 Workers 包：`scripts/build.mjs` 在 OpenNext 调用 Next 构建前
+设 `HENNA_BUILD_TARGET=workers`，`next.config.ts` 据此把 `pg` 别名到
+`db/pg-unavailable.ts` —— 一个构造函数直接抛错的模块。Node 自托管构建用的仍是
+真实的 `pg`，并保留在 `serverExternalPackages` 里。
+
 ### 3. 添加三个变量
 
 *Worker → 设置 → 变量和机密 → 添加*

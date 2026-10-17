@@ -23,6 +23,7 @@
 import { spawnSync } from "node:child_process";
 
 const CHILD_FLAG = "HENNA_OPENNEXT_CHILD";
+const TARGET_FLAG = "HENNA_BUILD_TARGET";
 
 function command() {
   return process.env[CHILD_FLAG] === "1"
@@ -31,7 +32,7 @@ function command() {
 }
 
 export function plan(env = process.env) {
-  if (env[CHILD_FLAG] === "1") return "next build --turbopack";
+  if (env[CHILD_FLAG] === "1") return `${TARGET_FLAG}=workers next build --turbopack`;
   return "opennextjs-cloudflare build";
 }
 
@@ -39,12 +40,24 @@ function main() {
   const { file, args } = command();
 
   if (process.env.HENNA_BUILD_PLAN === "1") {
-    console.log([file, ...args].join(" "));
+    // Print what would run, including the target flag, so the tests assert the
+    // decision without spawning a build.
+    console.log(
+      `${TARGET_FLAG}=${process.env[CHILD_FLAG] === "1" ? "workers" : "node"} ` +
+        [file, ...args].join(" "),
+    );
     return;
   }
 
   const env = { ...process.env };
-  if (env[CHILD_FLAG] !== "1") env[CHILD_FLAG] = "1";
+  if (env[CHILD_FLAG] !== "1") {
+    env[CHILD_FLAG] = "1";
+    env[TARGET_FLAG] = "workers";
+  } else {
+    // Reached as OpenNext's child: the Next build feeding a Worker bundle, so
+    // next.config.ts must stub out Node-only packages such as pg.
+    env[TARGET_FLAG] = "workers";
+  }
 
   const result = spawnSync(file, args, { stdio: "inherit", env, shell: process.platform === "win32" });
   process.exit(result.status ?? 1);

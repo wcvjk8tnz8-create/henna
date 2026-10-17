@@ -36,6 +36,12 @@ describe("scripts/build.mjs", () => {
     expect(out).not.toContain("opennextjs-cloudflare");
   });
 
+  it("marks the Next build as a Workers build", () => {
+    // next.config.ts reads this to stub out Node-only packages. Without it, pg
+    // reaches the Worker bundle and the build dies on pg-cloudflare.
+    expect(plan({ HENNA_OPENNEXT_CHILD: "1" })).toContain("HENNA_BUILD_TARGET=workers");
+  });
+
   it("is stable across one level of nesting", () => {
     const top = plan({ HENNA_OPENNEXT_CHILD: "" });
     const child = plan({ HENNA_OPENNEXT_CHILD: "1" });

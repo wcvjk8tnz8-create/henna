@@ -2,6 +2,18 @@ import { randomBytes } from "node:crypto";
 import type { NextConfig } from "next";
 
 /**
+ * Whether this Next build is feeding a Cloudflare Workers bundle.
+ *
+ * Set by scripts/build.mjs, which knows which branch it is running: OpenNext
+ * invokes the project's own build script, and that script sets the flag before
+ * handing control back. Anything that differs between the two targets reads it
+ * from here rather than guessing from the presence of a binding.
+ */
+function isWorkerBuild(): boolean {
+  return process.env.HENNA_BUILD_TARGET === "workers";
+}
+
+/**
  * Henna — Next.js configuration.
  *
  * Security-relevant notes:
@@ -51,7 +63,22 @@ const nextConfig: NextConfig = {
       bodySizeLimit: "1mb",
     },
   },
-  serverExternalPackages: ["pg"],
+  /**
+   * `pg` is a Node-only dependency, used solely when Henna is self-hosted and
+   * connected to PostgreSQL. On Workers the database is D1, and pg must not
+   * reach the bundle at all — see db/pg-unavailable.ts for why.
+   *
+   * `scripts/build.mjs` sets HENNA_BUILD_TARGET=workers when it is invoked by
+   * OpenNext, and =node otherwise, so both builds come from one config.
+   */
+  serverExternalPackages: isWorkerBuild() ? [] : ["pg"],
+  turbopack: isWorkerBuild()
+    ? {
+        // Replacing pg with a stub that throws is safe precisely because the
+        // D1 branch is the only one that runs on Workers.
+        resolveAlias: { pg: "./db/pg-unavailable.ts" },
+      }
+    : undefined,
   images: {
     // Remote images are never auto-loaded in the mail reader; nothing is
     // optimised from a third-party origin.
