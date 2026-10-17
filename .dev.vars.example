@@ -1,0 +1,9 @@
+# Local development secrets for `wrangler dev`. Never commit real values.
+DOMAIN=["example.com"]
+ADMIN=root@example.com
+jwt_secret=replaceWithAtLeast32LettersAndDigits
+HENNA_CREDENTIAL_KEY=replace-with-base64-32-random-bytes
+GITHUB_CLIENT_ID=
+GITHUB_CLIENT_SECRET=
+RESEND_API_KEY=
+HENNA_EMAIL_FROM=Henna <no-reply@example.com>

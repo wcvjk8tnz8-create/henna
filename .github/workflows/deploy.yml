@@ -1,0 +1,83 @@
+name: Deploy Henna to Cloudflare Workers
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# A failed gate must never reach production.
+concurrency:
+  group: henna-deploy
+  cancel-in-progress: false
+
+jobs:
+  quality:
+    name: Typecheck, lint and test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: End-to-end tests
+        run: npm run test:e2e
+        env:
+          DOMAIN: '["example.com"]'
+          ADMIN: root@example.com
+          jwt_secret: ciOnlyJwtSecretValue0123456789abcdef
+          HENNA_CREDENTIAL_KEY: ${{ secrets.HENNA_CREDENTIAL_KEY }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+  deploy:
+    name: Build and deploy
+    needs: quality
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build for Cloudflare Workers
+        run: npx opennextjs-cloudflare build
+        env:
+          # Root configuration. Provided through repository secrets.
+          DOMAIN: ${{ secrets.DOMAIN }}
+          ADMIN: ${{ secrets.ADMIN }}
+          jwt_secret: ${{ secrets.JWT_SECRET }}
+          HENNA_CREDENTIAL_KEY: ${{ secrets.HENNA_CREDENTIAL_KEY }}
+          # Optional when configured in /admin/settings instead.
+          GITHUB_CLIENT_ID: ${{ secrets.GITHUB_CLIENT_ID }}
+          GITHUB_CLIENT_SECRET: ${{ secrets.GITHUB_CLIENT_SECRET }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          HENNA_EMAIL_FROM: ${{ secrets.HENNA_EMAIL_FROM }}
+
+      - name: Deploy
+        uses: cloudflare/wrangler-action@v4
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy

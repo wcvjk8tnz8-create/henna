@@ -1,0 +1,35 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "henna",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2024-09-23",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": { "enabled": true },
+
+  // Henna must never cache authenticated responses or mail-related assets.
+  "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
+
+  "vars": {
+    // DOMAIN is a JSON array, exactly as documented in docs/self-hosting.md.
+    "DOMAIN": "[\"example.com\"]",
+    "ADMIN": "root@example.com",
+    "HENNA_REGISTRATION_MODE": "closed",
+    "HENNA_TOTP_POLICY": "admin-only",
+    // Cloudflare terminates TLS at the edge, so X-Forwarded-For is trustworthy.
+    "HENNA_TRUST_PROXY": "1"
+  },
+
+  // Secrets are NOT listed here. Set them with:
+  //   npx wrangler secret put jwt_secret
+  //   npx wrangler secret put HENNA_CREDENTIAL_KEY
+  //   npx wrangler secret put GITHUB_CLIENT_SECRET   (optional; UI alternative)
+  //   npx wrangler secret put RESEND_API_KEY         (optional; UI alternative)
+
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      "id": "<HYPERDRIVE_CONFIG_ID>",
+      "localConnectionString": "postgres://postgres:postgres@localhost:5432/henna"
+    }
+  ]
+}
