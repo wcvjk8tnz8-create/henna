@@ -7,23 +7,24 @@
  * them it concludes the app is on Node, reaches for `pg`, and on Workers throws
  * before a single byte is rendered. That is a blank page with no error anywhere.
  *
- * A function is installed rather than a value because the context is
+ * The accessor is a *function*, not a value, because the context is
  * request-scoped: calling it inside a request returns the real bindings, and
- * calling it outside one (during build-time static generation) simply throws,
- * which db/runtime.ts treats as "no bindings right now".
+ * calling it outside one (during build-time static generation) throws, which
+ * db/runtime.ts reads as "no bindings right now".
+ *
+ * Two globals are set so that whichever import path works is used, and a
+ * failure to install is silent — db/runtime.ts has its own fallbacks and must
+ * keep working if this file is not loaded at all.
  */
 export async function register(): Promise<void> {
-  if (process.env.NEXT_RUNTIME !== "nodejs" && process.env.NEXT_RUNTIME !== "edge") {
-    return;
-  }
-
   try {
     const { getCloudflareContext } = await import("@opennextjs/cloudflare");
-    (globalThis as {
-      __opennextCloudflareContext?: () => { env?: unknown };
-    }).__opennextCloudflareContext = () => getCloudflareContext() as { env?: unknown };
+    const read = () => getCloudflareContext() as { env?: unknown };
+    const g = globalThis as Record<string, unknown>;
+    g.__opennextCloudflareContext = read;
+    g.__hennaGetCloudflareContext = read;
   } catch {
-    // Not running on Cloudflare (local `next dev`, or a Node deployment).
-    // Nothing to install; db/runtime.ts falls through to the Node path.
+    // Not on Cloudflare (local `next dev`, or a Node deployment). Nothing to
+    // install; db/runtime.ts falls through to the Node path.
   }
 }

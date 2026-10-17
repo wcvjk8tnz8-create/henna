@@ -53,19 +53,20 @@ function getCloudflareEnv(): CloudflareEnvShape | null {
     .__hennaCloudflareEnv__;
   if (injected) return injected;
 
-  // OpenNext exposes bindings through a request-scoped context. It throws
-  // outside a request (static generation at build time), which is not an error
-  // here — it just means "no bindings available right now".
-  try {
-    const mod = (globalThis as {
-      __opennextCloudflareContext?: () => { env?: CloudflareEnvShape };
-    }).__opennextCloudflareContext;
-    if (typeof mod === "function") {
-      const ctx = mod();
-      if (ctx?.env) return ctx.env;
+  // The documented path: OpenNext exposes bindings through a request-scoped
+  // context. Called here rather than through instrumentation.ts because if that
+  // file is not loaded, nothing else can see the binding either — and a Worker
+  // that cannot see its binding takes the Node path and renders nothing.
+  //
+  // It throws outside a request (build-time static generation), which is not an
+  // error: it just means "no bindings available right now".
+  for (const read of [readContextDirect, readInstalledContext]) {
+    try {
+      const env = read();
+      if (env) return env;
+    } catch {
+      // try the next source
     }
-  } catch {
-    // fall through
   }
 
   const legacy = (process.env as Record<string, unknown>).HYPERDRIVE;
@@ -73,6 +74,24 @@ function getCloudflareEnv(): CloudflareEnvShape | null {
     return legacy as CloudflareEnvShape;
   }
   return null;
+}
+
+/** `getCloudflareContext()` from the package, if it is resolvable at all. */
+function readContextDirect(): CloudflareEnvShape | null {
+  const fn = (globalThis as {
+    __hennaGetCloudflareContext?: () => { env?: CloudflareEnvShape };
+  }).__hennaGetCloudflareContext;
+  if (typeof fn !== "function") return null;
+  return fn()?.env ?? null;
+}
+
+/** Installed by instrumentation.ts, which has the real static import. */
+function readInstalledContext(): CloudflareEnvShape | null {
+  const fn = (globalThis as {
+    __opennextCloudflareContext?: () => { env?: CloudflareEnvShape };
+  }).__opennextCloudflareContext;
+  if (typeof fn !== "function") return null;
+  return fn()?.env ?? null;
 }
 
 export function getD1Binding(): D1Binding | null {

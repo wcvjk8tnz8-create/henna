@@ -21,13 +21,22 @@ export default async function LoginPage({
 }) {
   const params = await searchParams;
 
-  // Already signed in (and through MFA): straight to the inbox.
-  const resolved = await resolveSessionFromCookies();
-  if (resolved?.principal.mfaSatisfied) {
-    redirect("/inbox");
+  // Already signed in (and through MFA): straight to the inbox. A failure here
+  // must not prevent the page from rendering — see `boot` below.
+  try {
+    const resolved = await resolveSessionFromCookies();
+    if (resolved?.principal.mfaSatisfied) {
+      redirect("/inbox");
+    }
+  } catch {
+    // Not signed in as far as this page is concerned.
   }
 
-  const settings = await getPublicInstanceSettings(getMailDomains());
+  // The sign-in page must render even when the database does not. Otherwise a
+  // fresh deploy with a broken binding is a blank page, which tells the operator
+  // nothing and cannot be debugged from the outside.
+  const boot = await loadBootState();
+  const settings = boot.settings;
   const jar = await cookies();
 
   return (
@@ -37,6 +46,16 @@ export default async function LoginPage({
         <p className="mt-2 text-sm text-neutral-600 dark:text-neutral-400">
           Henna never stores your mail. Messages stay between your browser and your mail server.
         </p>
+
+        {boot.problem ? (
+          <p
+            role="alert"
+            className="mt-4 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200"
+          >
+            This instance could not read its settings, so only password sign-in is offered.
+            <span className="mt-1 block font-mono text-xs opacity-80">{boot.problem}</span>
+          </p>
+        ) : null}
 
         {params.error ? (
           <p
@@ -59,6 +78,42 @@ export default async function LoginPage({
       </div>
     </main>
   );
+}
+
+/**
+ * Instance settings, or a safe fallback plus the reason they are unavailable.
+ *
+ * Password sign-in stays offered when settings cannot be read, because it is
+ * the one method that needs no external service. Everything else is switched
+ * off rather than advertised and then failing.
+ */
+async function loadBootState(): Promise<{
+  settings: Awaited<ReturnType<typeof getPublicInstanceSettings>>;
+  problem: string | null;
+}> {
+  try {
+    return { settings: await getPublicInstanceSettings(getMailDomains()), problem: null };
+  } catch (error) {
+    const problem = error instanceof Error ? error.message : String(error);
+    console.error("[henna] could not read instance settings:", problem);
+    return {
+      settings: {
+        authMethods: ["password"],
+        registrationMode: "closed",
+        totpPolicy: "admin-only",
+        passwordMinLength: 12,
+        passwordRequireComplexity: true,
+        otpTtlSeconds: 600,
+        otpResendCooldownSeconds: 60,
+        transitionsEnabled: false,
+        respectReducedMotion: true,
+        githubConfigured: false,
+        resendConfigured: false,
+        mailDomains: [],
+      },
+      problem,
+    };
+  }
 }
 
 function describeError(code: string): string {
