@@ -1,7 +1,7 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "henna",
-  "main": ".open-next/worker.js",
+  "main": "worker.ts",
   "compatibility_date": "2025-10-25",
   "compatibility_flags": ["nodejs_compat"],
   "observability": { "enabled": true },
@@ -37,7 +37,13 @@
     }
   ],
 
-  // Attachments. Also declared by name; the bucket is created on first deploy.
+  // Attachments AND raw inbound messages. Declared by name; the bucket is
+  // created on first deploy.
+  //
+  // Henna is a mail service: `worker.ts` exports an `email()` handler alongside
+  // `fetch()`. To receive mail, open Cloudflare Dashboard -> your domain ->
+  // Email -> Email Routing -> Email Workers, and create a route (or a catch-all)
+  // pointing at this Worker. See docs/cloudflare-deployment.md.
   // The browser reads and writes it through presigned URLs, so Henna never
   // proxies attachment bytes.
   "r2_buckets": [

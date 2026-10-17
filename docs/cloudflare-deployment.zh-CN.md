@@ -475,3 +475,56 @@ npm run deploy
 
 如果问题部署涉及凭证密钥变更，请记住：回滚**代码**不会回滚**密钥**。在确认不需要
 回滚之前，把旧密钥保留在 `HENNA_CREDENTIAL_KEY` 里。
+
+
+
+### 注意：这个按钮会创建一个*新*仓库
+
+**Deploy to Cloudflare** 按钮会把 Henna **fork** 到你账号下的新仓库（例如
+`you/henna`），并从那个 fork 部署。按钮正是靠这一点才能替你提交 Worker 配置。
+
+两个要知道的后果：
+
+- 你的部署绑定的是**那个 fork**，不是本仓库。往原仓库推送**不会**触发部署。
+- 想获得 Henna 后续的修复，需要从上游仓库合并到你的 fork。
+
+如果你想**从自己已有的仓库**部署，就不要用按钮：
+
+1. Cloudflare Dashboard → **Workers & Pages** → **Create** →
+   **Connect to Git**。
+2. 授权 GitHub 并选择你已有的仓库。Cloudflare 直接从它部署，不会 fork。
+3. 同样设置那三个变量，然后推送一次提交即可部署。
+
+也可以完全不用 Git，从本机部署：
+
+```bash
+npx wrangler login
+npm run build          # 等同 opennextjs-cloudflare build
+npx wrangler deploy    # 通过 worker.ts 上传 .open-next/
+```
+
+### 4. 开启收信（这一步才让 Henna 成为邮件服务）
+
+Henna 的 Worker 除了 `fetch()` 还导出了 `email()` handler，因此 Cloudflare
+Email Routing 可以把入站邮件直接投递给它。
+
+1. Cloudflare Dashboard → 你的域名 → **Email** → **Email Routing**。
+2. 点击 **Enable Email Routing** → *Add records and enable*。Cloudflare 会自动
+   添加 MX、SPF 和 DKIM 记录。
+3. **Email Workers** → *Create address*。二选一：
+   - **Catch-all**：`*@yourdomain.com` —— 所有未匹配其他规则的地址都会投递，
+     Henna 会在邮件到达时自动创建邮箱；或
+   - **指定地址**：`hello@yourdomain.com`，每个地址一条规则。
+4. 将 *Action* 设为 **Send to a Worker**，选择 `henna`。
+
+不需要额外的 Worker —— 同一个 Worker 既提供 Web 界面也接收邮件。
+
+入站邮件这样存储：
+
+- 未经修改的 MIME 写入 R2，路径 `mail/<mailbox>/<timestamp>.eml`，原始邮件永远可恢复。
+- 解析出的字段（发件人、主题、摘要、纯文本）写入 `messages`，列表和搜索不必访问 R2。
+- 附件**元数据**写入 `attachments`；附件**字节**写入 R2。数据库绝不存二进制。
+
+开启 catch-all 时，邮箱记录会在邮件到达时创建，因此不会因为没人认领地址而丢信。
+也可以提前创建地址并分配给用户；若设置了 `forward_to`，邮件会被转发且不保留本地副本。
+

@@ -10,6 +10,10 @@ import { usesD1 } from "./runtime";
  * modules declare the same tables with the same column names, so the query
  * builders in `lib/dal/` are written once and work on either.
  *
+ * Henna is a mail *service*: inbound mail is stored, so `mailboxes`, `messages`
+ * and `attachments` are part of this schema. Attachment bytes are not — those
+ * live in object storage, referenced by `attachments.r2_key`.
+ *
  * Which set is exported is decided at module load. The objects are typed as the
  * PostgreSQL ones — that is what the compiler checks the DAL against — while the
  * runtime object is whatever the platform actually provides. It is one
@@ -35,6 +39,9 @@ export const {
   rateLimitCounters,
   storageConfig,
   storageObjects,
+  mailboxes,
+  messages,
+  attachments,
 } = impl;
 
 export const {

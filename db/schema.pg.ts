@@ -14,11 +14,9 @@ import { relations } from "drizzle-orm";
 /**
  * Henna's PostgreSQL schema — the self-hosted and Hyperdrive paths.
  *
- * Hard rule encoded here: **there is no table for mail bodies, attachments or
- * message lists.** Henna's server stores identity, encrypted upstream
- * credentials, TOTP material, settings and an append-only audit log. Mail
- * content lives in the browser (or in a local IndexedDB cache) and on the
- * upstream server, never in these tables.
+ * Henna is a mail *service*, so inbound mail is parsed and stored here: mailbox
+ * addresses, messages and attachment metadata. Attachment *bytes* live in
+ * object storage, never in the database. See lib/mail/inbound.ts.
  */
 
 /* ---------------------------------------------------------------- enums */
@@ -414,4 +412,84 @@ export const storageObjects = pgTable(
     uniqueIndex("storage_objects_key_unique").on(table.objectKey),
     index("storage_objects_user_idx").on(table.userId),
   ],
+);
+
+/* ------------------------------------------------------------- mailboxes */
+
+export const mailboxes = pgTable(
+  "mailboxes",
+  {
+    id: uuid("id")
+      .primaryKey()
+      .$defaultFn(() => randomUUID()),
+    address: text("address").notNull(),
+    domain: text("domain").notNull(),
+    localPart: text("local_part").notNull(),
+    /** Null is allowed: an address may receive mail before anyone owns it. */
+    ownerUserId: uuid("owner_user_id"),
+    kind: text("kind").notNull().default("inbox"),
+    forwardTo: text("forward_to"),
+    enabled: integer("enabled").notNull().default(1),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("mailboxes_address_unique").on(table.address),
+    index("mailboxes_owner_idx").on(table.ownerUserId),
+    index("mailboxes_domain_idx").on(table.domain),
+  ],
+);
+
+/* -------------------------------------------------------------- messages */
+
+export const messages = pgTable(
+  "messages",
+  {
+    id: uuid("id")
+      .primaryKey()
+      .$defaultFn(() => randomUUID()),
+    mailboxId: uuid("mailbox_id").notNull(),
+    messageId: text("message_id"),
+    inReplyTo: text("in_reply_to"),
+    fromAddr: text("from_addr").notNull(),
+    fromName: text("from_name"),
+    toAddr: text("to_addr").notNull(),
+    subject: text("subject").notNull().default(""),
+    snippet: text("snippet").notNull().default(""),
+    textBody: text("text_body"),
+    hasHtml: integer("has_html").notNull().default(0),
+    rawKey: text("raw_key"),
+    sizeBytes: integer("size_bytes").notNull().default(0),
+    receivedAt: timestamp("received_at", { withTimezone: true }).notNull(),
+    readAt: timestamp("read_at", { withTimezone: true }),
+    starred: integer("starred").notNull().default(0),
+    archivedAt: timestamp("archived_at", { withTimezone: true }),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    spfResult: text("spf_result"),
+    dkimResult: text("dkim_result"),
+    dmarcResult: text("dmarc_result"),
+  },
+  (table) => [
+    index("messages_mailbox_idx").on(table.mailboxId),
+    index("messages_received_idx").on(table.receivedAt),
+    index("messages_mailbox_received_idx").on(table.mailboxId, table.receivedAt),
+  ],
+);
+
+/* ----------------------------------------------------------- attachments */
+
+export const attachments = pgTable(
+  "attachments",
+  {
+    id: uuid("id")
+      .primaryKey()
+      .$defaultFn(() => randomUUID()),
+    messageId: uuid("message_id").notNull(),
+    filename: text("filename"),
+    mimeType: text("mime_type").notNull().default("application/octet-stream"),
+    sizeBytes: integer("size_bytes").notNull().default(0),
+    r2Key: text("r2_key").notNull(),
+    contentId: text("content_id"),
+    disposition: text("disposition"),
+  },
+  (table) => [index("attachments_message_idx").on(table.messageId)],
 );

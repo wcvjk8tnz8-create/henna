@@ -120,6 +120,69 @@ Two things were added so this is never silent again: `app/error.tsx` and
 `app/global-error.tsx` render the message instead of a blank page, and
 `/api/health` includes the database probe above.
 
+
+
+### Heads up: the button creates a *new* repository
+
+The **Deploy to Cloudflare** button **forks** Henna into a new repository under
+your account (e.g. `you/henna`) and deploys from that fork. That is how the
+button is able to commit the Worker config on your behalf.
+
+Two consequences worth knowing:
+
+- Your deployment is wired to **the fork**, not to this repository. Pushing to
+  the original does **not** trigger a deploy.
+- To pick up Henna's later fixes you merge from the upstream repository into
+  your fork.
+
+If you would rather deploy **from a repository you already own**, skip the
+button:
+
+1. Cloudflare Dashboard → **Workers & Pages** → **Create** →
+   **Connect to Git**.
+2. Authorise GitHub and pick your existing repository. Cloudflare deploys from
+   it directly, with no fork.
+3. Set the same three variables, then push a commit to deploy.
+
+Or skip Git entirely and deploy from your machine:
+
+```bash
+npx wrangler login
+npm run build          # == opennextjs-cloudflare build
+npx wrangler deploy    # uploads .open-next/ via worker.ts
+```
+
+### 4. Turn on receiving mail (this is the part that makes Henna a mail service)
+
+Henna's Worker exports an `email()` handler alongside `fetch()`, so Cloudflare
+Email Routing can deliver inbound mail straight into it.
+
+1. Cloudflare Dashboard → your domain → **Email** → **Email Routing**.
+2. **Enable Email Routing** → *Add records and enable*. Cloudflare adds the MX,
+   SPF and DKIM records for you.
+3. **Email Workers** → *Create address*. Either:
+   - **Catch-all**: `*@yourdomain.com` → every address that does not match
+     another rule is delivered, and Henna creates the mailbox on arrival; or
+   - **Specific addresses**: `hello@yourdomain.com`, one rule each.
+4. Set *Action* to **Send to a Worker** and pick `henna`.
+
+No separate Worker is needed — the same Worker serves the web UI and receives
+mail.
+
+Inbound mail is stored like this:
+
+- The unmodified MIME goes to R2 under `mail/<mailbox>/<timestamp>.eml`, so the
+  original is always recoverable.
+- Parsed fields (from, subject, snippet, plain text) go into `messages`, so
+  listing and searching never touch R2.
+- Attachment **metadata** goes into `attachments`; attachment **bytes** go to R2.
+  The database never stores a blob.
+
+A mailbox row is created on arrival when catch-all is on, so mail is never lost
+just because nobody claimed the address first. An address can also be created
+ahead of time and assigned to a user; if `forward_to` is set, the message is
+relayed onward and no local copy is kept.
+
 ### 3. Add the three variables
 
 *Worker → Settings → Variables and Secrets → Add*

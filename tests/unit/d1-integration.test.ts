@@ -100,11 +100,22 @@ describe("D1 schema", () => {
     }
   });
 
-  it("has no table that could hold mail content", () => {
+  it("stores mail, because Henna is a mail service", () => {
+    // This assertion used to be the opposite — "no table that could hold mail
+    // content" — which was correct when Henna was a client that only proxied
+    // mail. As a mail service it must store it, so the invariant is inverted.
     const names = tableNames();
-    for (const forbidden of ["messages", "mail_bodies", "attachments"]) {
-      expect(names).not.toContain(forbidden);
+    for (const required of ["mailboxes", "messages", "attachments"]) {
+      expect(names).toContain(required);
     }
+  });
+
+  it("keeps attachment bytes out of the database", () => {
+    // The one thing that has not changed: attachments are stored as a *key*
+    // into object storage, never as a blob column.
+    const attach = D1_SCHEMA_SQL.slice(D1_SCHEMA_SQL.indexOf("CREATE TABLE IF NOT EXISTS attachments"));
+    expect(attach).toContain("r2_key");
+    expect(attach).not.toMatch(/\b(content|bytes|data)\s+BLOB/i);
   });
 
   it("is idempotent — applying it twice is safe", () => {

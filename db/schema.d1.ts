@@ -18,8 +18,8 @@ import { relations } from "drizzle-orm";
  *    `lib/audit/log.ts` encode and decode explicitly, which is why both dialects
  *    use a plain text column.
  *
- * The one rule that does not change: **no table for mail bodies, attachments or
- * message lists.**
+ * Henna is a mail *service*, so inbound mail is parsed and stored here. Mail
+ * bodies therefore DO live in these tables — see lib/mail/inbound.ts.
  */
 
 /* ---------------------------------------------------------------- users */
@@ -369,6 +369,91 @@ export const storageObjects = sqliteTable(
 );
 
 /* --------------------------------------------------------- relations */
+
+/* ------------------------------------------------------------- mailboxes */
+
+export const mailboxes = sqliteTable(
+  "mailboxes",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => randomUUID()),
+    /** Normalised (lower-cased) full address. */
+    address: text("address").notNull(),
+    domain: text("domain").notNull(),
+    localPart: text("local_part").notNull(),
+    /** Null is allowed: an address may receive mail before anyone owns it. */
+    ownerUserId: text("owner_user_id"),
+    kind: text("kind").notNull().default("inbox"),
+    forwardTo: text("forward_to"),
+    enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+    createdAt: integer("created_at", { mode: "timestamp" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+  },
+  (table) => [
+    uniqueIndex("mailboxes_address_unique").on(table.address),
+    index("mailboxes_owner_idx").on(table.ownerUserId),
+    index("mailboxes_domain_idx").on(table.domain),
+  ],
+);
+
+/* -------------------------------------------------------------- messages */
+
+export const messages = sqliteTable(
+  "messages",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => randomUUID()),
+    mailboxId: text("mailbox_id").notNull(),
+    messageId: text("message_id"),
+    inReplyTo: text("in_reply_to"),
+    fromAddr: text("from_addr").notNull(),
+    fromName: text("from_name"),
+    toAddr: text("to_addr").notNull(),
+    subject: text("subject").notNull().default(""),
+    snippet: text("snippet").notNull().default(""),
+    textBody: text("text_body"),
+    hasHtml: integer("has_html", { mode: "boolean" }).notNull().default(false),
+    /** R2 key holding the unmodified MIME, so the original is recoverable. */
+    rawKey: text("raw_key"),
+    sizeBytes: integer("size_bytes").notNull().default(0),
+    receivedAt: integer("received_at", { mode: "timestamp" }).notNull(),
+    readAt: integer("read_at", { mode: "timestamp" }),
+    starred: integer("starred", { mode: "boolean" }).notNull().default(false),
+    archivedAt: integer("archived_at", { mode: "timestamp" }),
+    deletedAt: integer("deleted_at", { mode: "timestamp" }),
+    spfResult: text("spf_result"),
+    dkimResult: text("dkim_result"),
+    dmarcResult: text("dmarc_result"),
+  },
+  (table) => [
+    index("messages_mailbox_idx").on(table.mailboxId),
+    index("messages_received_idx").on(table.receivedAt),
+    index("messages_mailbox_received_idx").on(table.mailboxId, table.receivedAt),
+  ],
+);
+
+/* ----------------------------------------------------------- attachments */
+
+export const attachments = sqliteTable(
+  "attachments",
+  {
+    id: text("id")
+      .primaryKey()
+      .$defaultFn(() => randomUUID()),
+    messageId: text("message_id").notNull(),
+    filename: text("filename"),
+    mimeType: text("mime_type").notNull().default("application/octet-stream"),
+    sizeBytes: integer("size_bytes").notNull().default(0),
+    /** Bytes live in R2; never in the database. */
+    r2Key: text("r2_key").notNull(),
+    contentId: text("content_id"),
+    disposition: text("disposition"),
+  },
+  (table) => [index("attachments_message_idx").on(table.messageId)],
+);
 
 export const usersRelations = relations(users, ({ many, one }) => ({
   sessions: many(sessions),

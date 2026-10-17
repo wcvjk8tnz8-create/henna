@@ -24,6 +24,15 @@ export interface CloudflareEnvShape {
   DB?: D1Binding;
   HYPERDRIVE?: { connectionString: string };
   DATABASE_URL?: string;
+  /** R2 bucket for raw messages and attachments. */
+  ATTACHMENTS?: R2BucketLike;
+  ASSETS?: unknown;
+}
+
+/** Minimal shape of an R2 bucket, matching the methods Henna uses. */
+export interface R2BucketLike {
+  put(key: string, value: ArrayBuffer | Uint8Array | string): Promise<unknown>;
+  get(key: string): Promise<{ body?: unknown } | null>;
 }
 
 /**
@@ -48,7 +57,7 @@ function looksLikeWorkerd(): boolean {
  * without workerd; then OpenNext's request context, which is the real source on
  * a deployed Worker; then a couple of shapes seen across OpenNext versions.
  */
-function getCloudflareEnv(): CloudflareEnvShape | null {
+export function getCloudflareEnv(): CloudflareEnvShape | null {
   const injected = (globalThis as { __hennaCloudflareEnv__?: CloudflareEnvShape })
     .__hennaCloudflareEnv__;
   if (injected) return injected;

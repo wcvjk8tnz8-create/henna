@@ -253,6 +253,72 @@ CREATE TABLE IF NOT EXISTS storage_objects (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS storage_objects_key_unique ON storage_objects (object_key);
 CREATE INDEX IF NOT EXISTS storage_objects_user_idx ON storage_objects (user_id);
+
+-- ---------------------------------------------------------------- mailboxes
+-- Addresses this instance serves. Created from a catch-all rule or explicitly
+-- by an administrator. owner_user_id may be null: an address can exist
+-- before anyone owns it, so mail is never bounced just because no account is
+-- bound yet.
+CREATE TABLE IF NOT EXISTS mailboxes (
+  id TEXT PRIMARY KEY NOT NULL,
+  address TEXT NOT NULL,
+  domain TEXT NOT NULL,
+  local_part TEXT NOT NULL,
+  owner_user_id TEXT REFERENCES users (id) ON DELETE SET NULL,
+  kind TEXT NOT NULL DEFAULT 'inbox',
+  forward_to TEXT,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  created_at INTEGER NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS mailboxes_address_unique ON mailboxes (address);
+CREATE INDEX IF NOT EXISTS mailboxes_owner_idx ON mailboxes (owner_user_id);
+CREATE INDEX IF NOT EXISTS mailboxes_domain_idx ON mailboxes (domain);
+
+-- ----------------------------------------------------------------- messages
+-- Inbound mail. raw_key points at the unmodified MIME in R2 so the original
+-- message is always recoverable; the parsed columns exist so listing and
+-- searching never has to fetch it.
+CREATE TABLE IF NOT EXISTS messages (
+  id TEXT PRIMARY KEY NOT NULL,
+  mailbox_id TEXT NOT NULL REFERENCES mailboxes (id) ON DELETE CASCADE,
+  message_id TEXT,
+  in_reply_to TEXT,
+  from_addr TEXT NOT NULL,
+  from_name TEXT,
+  to_addr TEXT NOT NULL,
+  subject TEXT NOT NULL DEFAULT '',
+  snippet TEXT NOT NULL DEFAULT '',
+  text_body TEXT,
+  has_html INTEGER NOT NULL DEFAULT 0,
+  raw_key TEXT,
+  size_bytes INTEGER NOT NULL DEFAULT 0,
+  received_at INTEGER NOT NULL,
+  read_at INTEGER,
+  starred INTEGER NOT NULL DEFAULT 0,
+  archived_at INTEGER,
+  deleted_at INTEGER,
+  spf_result TEXT,
+  dkim_result TEXT,
+  dmarc_result TEXT
+);
+CREATE INDEX IF NOT EXISTS messages_mailbox_idx ON messages (mailbox_id);
+CREATE INDEX IF NOT EXISTS messages_received_idx ON messages (received_at);
+CREATE INDEX IF NOT EXISTS messages_mailbox_received_idx ON messages (mailbox_id, received_at);
+
+-- -------------------------------------------------------------- attachments
+-- Metadata only. Bytes live in R2 under r2_key, so the database stays small
+-- and an attachment is served by a presigned URL rather than through Henna.
+CREATE TABLE IF NOT EXISTS attachments (
+  id TEXT PRIMARY KEY NOT NULL,
+  message_id TEXT NOT NULL REFERENCES messages (id) ON DELETE CASCADE,
+  filename TEXT,
+  mime_type TEXT NOT NULL DEFAULT 'application/octet-stream',
+  size_bytes INTEGER NOT NULL DEFAULT 0,
+  r2_key TEXT NOT NULL,
+  content_id TEXT,
+  disposition TEXT
+);
+CREATE INDEX IF NOT EXISTS attachments_message_idx ON attachments (message_id);
 `;
 
 /**
