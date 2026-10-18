@@ -45,4 +45,4 @@ check('普通用户未指定 → user', resolveRole('u@x.com', undefined) === 'u
 check('非法角色值回落 user', resolveRole('u@x.com', 'superuser') === 'user');
 
 console.log(`\n${pass} passed, ${fail} failed`);
-if (fail > 0) process.exit(1);
+if (fail > 0) throw new Error(`${fail} 项失败`);

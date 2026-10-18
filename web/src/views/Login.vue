@@ -5,6 +5,7 @@ import { api, setToken, type Me } from '../api';
 import { loadConfig, loadMe, store, toast } from '../store';
 import CloudSky from '../components/CloudSky.vue';
 import CloudShader from '../components/CloudShader.vue';
+import EmailField from '../components/EmailField.vue';
 
 const router = useRouter();
 const route = useRoute();
@@ -41,6 +42,10 @@ const showSky = computed(() => useSky.value || imgFailed.value);
 const emailPlaceholder = computed(() =>
   st.value.hide_login_domain === 'true' ? '请输入邮箱' : 'you@example.com',
 );
+
+/** 可选域名：站点配置的托管域名 */
+const domains = computed(() => store.config?.domains ?? []);
+const hideDomain = computed(() => st.value.hide_login_domain === 'true');
 
 const oauthList = computed(
   () =>
@@ -96,8 +101,12 @@ onMounted(async () => {
   mountTurnstile();
 });
 
+/** 是否自己输入了完整地址（此时不再拼接后缀） */
+const isFullAddress = computed(() => email.value.includes('@'));
+
 async function submit() {
   if (!email.value || !password.value) return toast('请填写邮箱与密码', 'err');
+  if (!email.value.includes('@')) return toast('邮箱格式不正确', 'err');
   if (needTurnstile.value && !turnstileToken.value) return toast('请先完成人机验证', 'err');
   loading.value = true;
   try {
@@ -188,10 +197,18 @@ function oauthLogin(key: string) {
           </button>
         </div>
 
-        <form class="mt-5 space-y-4" @submit.prevent="submit">
+        <form class="mt-5 space-y-4" novalidate @submit.prevent="submit">
           <div>
             <label class="label">邮箱</label>
-            <input v-model="email" class="input" type="email" :placeholder="emailPlaceholder" autocomplete="username" />
+            <EmailField
+              v-model="email"
+              :domains="domains"
+              :hide-domain="hideDomain"
+              :placeholder="emailPlaceholder"
+            />
+            <p v-if="isFullAddress" class="mt-1 text-[11px] text-ink-500">
+              已输入完整地址，将按你填写的邮箱提交
+            </p>
           </div>
           <div>
             <label class="label">密码</label>
