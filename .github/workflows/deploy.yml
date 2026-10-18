@@ -142,9 +142,11 @@ jobs:
             echo "❌ 拿不到访问地址，请设置 CUSTOM_DOMAIN"
             exit 1
           fi
+          echo "· 目标：$WORKER_URL/api/init/<JWT_SECRET>"
           for i in 1 2 3 4 5; do
-            BODY=$(curl -sL "$WORKER_URL/api/init/${JWT_SECRET}" || echo "")
-            echo "尝试 $i -> $BODY"
+            CODE=$(curl -sL -w "%{http_code}" -o /tmp/henna-init.txt "$WORKER_URL/api/init/${JWT_SECRET}" || echo 000)
+            BODY=$(head -c 200 /tmp/henna-init.txt 2>/dev/null || echo "")
+            echo "尝试 $i -> HTTP $CODE / $BODY"
             if [ "$BODY" = "success" ]; then
               echo "✅ 数据库初始化完成"
               echo "### 部署结果" >> "$GITHUB_STEP_SUMMARY"
@@ -155,7 +157,11 @@ jobs:
             fi
             sleep 12
           done
-          echo "❌ 初始化失败，最后响应：$BODY"
+          echo "❌ 初始化失败"
+          echo "   常见原因："
+          echo "   1. HTTP 401 → JWT_SECRET 与部署时用的不一致"
+          echo "   2. HTTP 404 → 路由未生效，确认 Worker 已成功部署"
+          echo "   3. HTTP 000 → 地址不可达，Worker 可能刚上线，稍等再试"
           exit 1
 
       - name: 🗑️ 清理运行记录
