@@ -6,9 +6,9 @@ on:
   workflow_dispatch:
     inputs:
       domains:
-        description: '邮箱域名，JSON 数组，如 ["your.domain"]'
+        description: '邮箱域名，留空则用 Secrets 里的 MAIL_DOMAINS。多个用逗号分隔，如 a.com,b.com'
         required: false
-        default: '[]'
+        default: ''
 
 concurrency:
   group: deploy-henna
@@ -63,7 +63,8 @@ jobs:
           R2_BUCKET: ${{ steps.provision.outputs.r2_bucket }}
           JWT_SECRET: ${{ secrets.JWT_SECRET }}
           ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
-          MAIL_DOMAINS: ${{ github.event.inputs.domains || secrets.MAIL_DOMAINS }}
+          # 手动运行时若留空则回落到 Secrets，避免被默认值 '[]' 覆盖
+          MAIL_DOMAINS: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.domains != '') && github.event.inputs.domains || secrets.MAIL_DOMAINS }}
         run: node scripts/render-config.mjs
 
       - name: Apply D1 migrations
