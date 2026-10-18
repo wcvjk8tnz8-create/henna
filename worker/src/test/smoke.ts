@@ -117,7 +117,14 @@ check('pinned 命中指定通道', out3.providerId === 2 && out3.result.success,
 
 // ── 7. 无可用通道
 const out4 = await dispatchMail({ from: 'a@b.com', to: ['c@d.com'], subject: 'x', text: 'x' }, [], env);
-check('无通道时明确报错', !out4.result.success && out4.result.error?.includes('没有已启用'), out4.result);
+check(
+  '无通道时明确报错',
+  out4.result.success === false && (out4.result.error ?? '').includes('没有已启用'),
+  out4.result,
+);
 
 console.log(`\n${pass} passed, ${fail} failed`);
-process.exit(fail === 0 ? 0 : 1);
+if (fail > 0) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  (globalThis as any).process?.exit?.(1);
+}

@@ -7,8 +7,8 @@ export interface Env {
   DB: D1Database;
   /** KV：会话黑名单、限流计数、设置缓存 */
   KV: KVNamespace;
-  /** R2：附件与内嵌图片 */
-  R2: R2Bucket;
+  /** R2：附件存储（可选，未启用时附件功能自动降级） */
+  R2?: R2Bucket;
   /** 前端静态资源 */
   ASSETS: Fetcher;
 

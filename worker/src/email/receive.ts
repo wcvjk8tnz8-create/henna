@@ -78,8 +78,9 @@ export async function handleIncoming(message: ForwardableEmailMessage, env: Env)
     .first<{ id: number }>();
   const messageId = inserted?.id ?? 0;
 
-  // 附件落 R2
+  // 附件落 R2（未启用 R2 时只登记元数据，不中断收信）
   for (const att of parsed.attachments ?? []) {
+    if (!env.R2) continue;
     const key = `att/${ownerId}/${messageId}/${randomHex(8)}-${att.filename ?? 'file'}`;
     await env.R2.put(key, att.content, {
       httpMetadata: { contentType: att.mimeType || 'application/octet-stream' },

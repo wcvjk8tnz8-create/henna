@@ -147,7 +147,12 @@ export interface MailProvider {
 | `CUSTOM_DOMAIN` | 自定义域名，如 `mail.your.domain` | |
 | `D1_DATABASE_ID` | 已有 D1 则填，留空自动创建 | |
 | `KV_NAMESPACE_ID` | 已有 KV 则填，留空自动创建 | |
-| `R2_BUCKET_NAME` | 附件桶名，留空则不启用附件功能 | |
+| `R2_BUCKET_NAME` | 附件桶名，**留空自动创建** `${NAME}-r2`；账户没开通 R2 则自动跳过 | |
+
+> **D1 / KV / R2 都不用你手动创建**，脚本会自动建：
+> 填了 ID 就用你指定的那一个，留空则自动查找同名资源、找不到就新建。
+> R2 免费额度需绑卡，账户没开通时会自动跳过并删掉配置段——收信、发信、规则分发照常工作，
+> 只是附件只保存文件名等元信息、不保存内容。
 
 > `DOMAIN` 这一项最容易填错。必须是 **JSON 数组格式** `["your.domain"]`，
 > 写成 `your.domain` 或 `[your.domain]` 都会在部署前的校验步骤直接报错退出——这是刻意的，早失败比部署完才发现问题好。

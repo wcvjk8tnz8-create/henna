@@ -43,7 +43,7 @@ if [[ -z "$JWT_SECRET" ]]; then
 fi
 export JWT_SECRET
 
-echo "▶ [1/7] 校验环境变量"
+echo "▶ [1/8] 校验环境变量"
 if [[ -z "$ADMIN" ]]; then echo "✗ ADMIN 不能为空" >&2; exit 1; fi
 if grep -q '[?%#/\\|&]' <<< "$JWT_SECRET"; then
   echo "✗ JWT_SECRET 含有非法字符（? % # / \\ | &）" >&2; exit 1
@@ -53,11 +53,11 @@ if ! jq -e 'type == "array"' <<< "$DOMAIN" >/dev/null; then
 fi
 echo "   ✓ 校验通过"
 
-echo "▶ [2/7] 构建前端"
+echo "▶ [2/8] 构建前端"
 ( cd web && npm install && npm run build )
 rm -rf worker/dist && cp -r web/dist worker/dist
 
-echo "▶ [3/7] 安装 Worker 依赖"
+echo "▶ [3/8] 安装 Worker 依赖"
 ( cd worker && npm install && npx wrangler telemetry disable >/dev/null 2>&1 || true )
 
 cd worker
@@ -65,22 +65,18 @@ cd worker
 cp wrangler-action.toml wrangler-deploy.toml
 CONFIG_FILE="wrangler-deploy.toml"
 
-echo "▶ [4/7] 渲染配置"
-if [[ -z "$R2_BUCKET_NAME" ]]; then
-  sed -i.bak '/\[\[r2_buckets\]\]/,/^$/d' "$CONFIG_FILE" && rm -f "$CONFIG_FILE.bak"
-fi
+echo "▶ [4/8] 渲染配置"
 sed -i.bak \
   -e "s|\${NAME}|${NAME}|g" \
   -e "s|\${CLOUDFLARE_ACCOUNT_ID}|${CLOUDFLARE_ACCOUNT_ID}|g" \
   -e "s|\${ADMIN}|${ADMIN}|g" \
   -e "s|\${JWT_SECRET}|${JWT_SECRET}|g" \
-  -e "s|\${R2_BUCKET_NAME}|${R2_BUCKET_NAME}|g" \
   "$CONFIG_FILE" && rm -f "$CONFIG_FILE.bak"
 # DOMAIN 是 JSON 数组，去掉包裹引号写成原生数组
 sed -i.bak "s|\"\${DOMAIN}\"|${DOMAIN}|g" "$CONFIG_FILE" && rm -f "$CONFIG_FILE.bak"
 echo "   ✓ 渲染完成"
 
-echo "▶ [5/7] 设置 KV / D1"
+echo "▶ [5/8] 设置 KV / D1"
 if [[ -n "$KV_NAMESPACE_ID" ]]; then
   sed -i.bak "s|\${KV_NAMESPACE_ID}|${KV_NAMESPACE_ID}|g" "$CONFIG_FILE" && rm -f "$CONFIG_FILE.bak"
 else
@@ -105,12 +101,37 @@ else
   echo "   ✓ D1 $D1_ID"
 fi
 
-echo "▶ [6/7] 部署 Worker"
+echo "▶ [6/8] 设置 R2 存储桶（可选，失败自动降级）"
+disable_r2() {
+  sed -i.bak '/\[\[r2_buckets\]\]/,/^$/d' "$CONFIG_FILE" && rm -f "$CONFIG_FILE.bak"
+  echo "   ! 未启用 R2，附件功能降级（只存附件元信息，不存文件内容）"
+}
+if [[ -z "$R2_BUCKET_NAME" ]]; then
+  R2_BUCKET_NAME="${NAME}-r2"
+  echo "   · 未指定，尝试自动创建默认桶 $R2_BUCKET_NAME"
+fi
+LIST=$(npx wrangler r2 bucket list --json 2>&1 || true)
+if ! printf '%s' "$LIST" | jq -e 'type == "array"' >/dev/null 2>&1; then
+  echo "   · R2 不可用（账户未开通/无权限）"
+  disable_r2
+elif printf '%s' "$LIST" | jq -e ".[] | select(.name == \"$R2_BUCKET_NAME\")" >/dev/null; then
+  echo "   ✓ R2 桶已存在：$R2_BUCKET_NAME"
+else
+  echo "   · 创建 R2 桶 $R2_BUCKET_NAME ..."
+  if ! npx wrangler r2 bucket create "$R2_BUCKET_NAME" >/dev/null 2>&1; then
+    disable_r2
+  else
+    echo "   ✓ R2 桶创建成功"
+    sed -i.bak "s|\${R2_BUCKET_NAME}|${R2_BUCKET_NAME}|g" "$CONFIG_FILE" && rm -f "$CONFIG_FILE.bak"
+  fi
+fi
+
+echo "▶ [7/8] 部署 Worker"
 npx wrangler deploy -c "$CONFIG_FILE" --keep-vars 2>&1 | tee deploy.log
 WORKER_URL="${CUSTOM_DOMAIN:+https://$CUSTOM_DOMAIN}"
 WORKER_URL="${WORKER_URL:-$(grep -o 'https://[a-zA-Z0-9.-]*\.workers\.dev' deploy.log | head -1)}"
 
-echo "▶ [7/7] 初始化数据库"
+echo "▶ [8/8] 初始化数据库"
 if [[ -z "$WORKER_URL" ]]; then
   echo "✗ 拿不到访问地址，请设置 CUSTOM_DOMAIN" >&2; exit 1
 fi

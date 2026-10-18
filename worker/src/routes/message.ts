@@ -86,7 +86,9 @@ message.delete('/:id', authRequired, async (c) => {
   if (!row) throw new HttpError('邮件不存在', 404);
   if (user.role !== 'admin' && row.user_id !== user.id) throw new HttpError('无权操作', 403);
   const atts = await qAll<{ r2_key: string }>(c.env.DB, 'SELECT r2_key FROM mail_attachment WHERE message_id = ?', id);
-  for (const a of atts) await c.env.R2.delete(a.r2_key).catch(() => undefined);
+  if (c.env.R2) {
+    for (const a of atts) await c.env.R2.delete(a.r2_key).catch(() => undefined);
+  }
   await exec(c.env.DB, 'DELETE FROM mail_attachment WHERE message_id = ?', id);
   await exec(c.env.DB, 'DELETE FROM mail_message WHERE id = ?', id);
   return c.json(ok({ deleted: true }));
@@ -101,6 +103,7 @@ message.get('/attachment/:id', authRequired, async (c) => {
     id,
   );
   if (!att) throw new HttpError('附件不存在', 404);
+  if (!c.env.R2) throw new HttpError('未启用附件存储（R2），仅保留附件信息', 404);
   const obj = await c.env.R2.get(att.r2_key);
   if (!obj) throw new HttpError('附件已过期', 404);
   const headers = new Headers();
