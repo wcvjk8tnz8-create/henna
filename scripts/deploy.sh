@@ -36,6 +36,8 @@ export CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID JWT_SECRET ADMIN_EMAIL MAIL_DO
 
 echo "▶ [1/6] 安装前端依赖并构建"
 ( cd web && npm install && npm run build )
+# 拷贝进 worker 目录，避免 assets.directory 指向父目录
+rm -rf worker/dist && cp -r web/dist worker/dist
 
 echo "▶ [2/6] 安装 Worker 依赖"
 ( cd worker && npm install )
@@ -49,11 +51,11 @@ export D1_ID KV_ID R2_BUCKET
 echo "▶ [4/6] 渲染 wrangler.jsonc"
 node scripts/render-config.mjs
 
-echo "▶ [5/6] 应用数据库迁移"
-( cd worker && npx wrangler d1 migrations apply henna-mail-db --remote )
+echo "▶ [5/6] 应用数据库迁移（失败也不阻断，/api/init 会兜底建表）"
+( cd worker && npx wrangler d1 migrations apply henna-mail-db --remote ) || true
 
 echo "▶ [6/6] 部署 Worker"
-DEPLOY_OUTPUT="$(cd worker && npx wrangler deploy 2>&1 | tee /dev/stderr)"
+DEPLOY_OUTPUT="$(cd worker && npx wrangler deploy --keep-vars 2>&1 | tee /dev/stderr)"
 URL="$(printf '%s' "$DEPLOY_OUTPUT" | grep -oE 'https://[a-zA-Z0-9.-]+\.workers\.dev' | head -1 || true)"
 
 if [[ -n "$URL" ]]; then
