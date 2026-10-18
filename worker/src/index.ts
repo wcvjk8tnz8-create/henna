@@ -4,7 +4,7 @@ import { bindErrorHandler } from './lib/http';
 import { exec } from './db/query';
 import { handleIncoming } from './email/receive';
 
-import system from './routes/system';
+import system, { initHandler } from './routes/system';
 import auth from './routes/auth';
 import mailbox from './routes/mailbox';
 import message from './routes/message';
@@ -24,6 +24,9 @@ app.route('/api/send', send);
 app.route('/api/provider', provider);
 app.route('/api/rule', rule);
 app.route('/api/admin', admin);
+
+// 初始化短路径：部署脚本用 /api/init/<JWT_SECRET>
+app.get('/api/init/:secret', initHandler);
 
 // 其余路径交给前端静态资源（wrangler assets 已配置 SPA fallback）
 app.all('*', (c) => c.env.ASSETS.fetch(c.req.raw));

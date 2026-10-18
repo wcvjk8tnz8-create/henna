@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import type { Context } from 'hono';
 import type { Env } from '../env';
 import { ok, HttpError } from '../lib/http';
 import { ensureSchema } from '../db/schema';
@@ -23,8 +24,14 @@ system.get('/config', async (c) => {
   );
 });
 
-/** 幂等初始化：建表 + 播种默认服务商。脚本与 Actions 部署后自动调用。 */
-system.get('/init/:secret', async (c) => {
+/**
+ * 幂等初始化：建表 + 播种默认服务商。脚本与 Actions 部署后自动调用。
+ * 同时挂在 /api/system/init/:secret 与短路径 /api/init/:secret
+ * （后者是 cloud-mail 的惯例，部署脚本用的就是它）。
+ *
+ * 响应体约定：纯文本 "success"。部署脚本以此判定成败，不要改成 JSON。
+ */
+export const initHandler = async (c: Context<{ Bindings: Env }>) => {
   if (c.req.param('secret') !== c.env.JWT_SECRET) throw new HttpError('密钥不匹配', 401);
   await ensureSchema(c.env.DB);
 
@@ -50,6 +57,8 @@ system.get('/init/:secret', async (c) => {
   return new Response('success', {
     headers: { 'Content-Type': 'text/plain; charset=utf-8' },
   });
-});
+};
+
+system.get('/init/:secret', initHandler);
 
 export default system;
