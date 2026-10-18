@@ -132,14 +132,7 @@ export interface MailProvider {
 
 ### 方式一 · GitHub Actions（推荐，push 即部署）
 
-> 工作流文件已随仓库提供：`deploy/github-actions-deploy.yml`。
-> GitHub 出于安全限制，API 无法直接写入 `.github/workflows/`（创建该目录需带 `workflow` 权限的令牌）。
-> 只需一次性把它放到 `.github/workflows/deploy.yml` 并推送，之后就是全自动了：
-> ```bash
-> mkdir -p .github/workflows && cp deploy/github-actions-deploy.yml .github/workflows/deploy.yml
-> git add .github && git commit -m "ci: enable actions deploy" && git push
-> ```
-> 如果你偏好完全不动手，直接用方式二（`scripts/deploy.sh`）即可，它不依赖 GitHub Actions。
+工作流已就位：`.github/workflows/deploy.yml`，默认分支推送即触发，无需任何手动操作。
 
 在仓库 `Settings → Secrets and variables → Actions` 配置：
 
@@ -147,7 +140,7 @@ export interface MailProvider {
 |---|---|
 | `CLOUDFLARE_API_TOKEN` | 含 Workers / D1 / KV / R2 编辑权限 |
 | `CLOUDFLARE_ACCOUNT_ID` | 账户 ID |
-| `JWT_SECRET` | 会话签名密钥（随机长串） |
+| `JWT_SECRET` | 会话签名密钥，**随便打一个别人猜不到的字符串即可**（见下方说明） |
 | `ADMIN_EMAIL` | 首个管理员邮箱，如 `admin@your.domain` |
 | `MAIL_DOMAINS` | JSON 数组，如 `["your.domain"]` |
 
@@ -158,7 +151,7 @@ export interface MailProvider {
 ```bash
 export CLOUDFLARE_API_TOKEN=xxx
 export CLOUDFLARE_ACCOUNT_ID=xxx
-export JWT_SECRET=$(openssl rand -hex 32)
+export JWT_SECRET=web3hennamail      # 随便打，别让别人知道就行
 export ADMIN_EMAIL=admin@your.domain
 export MAIL_DOMAINS='["your.domain"]'
 ./scripts/deploy.sh            # 自动建资源 → 迁库 → 构建 → 部署
@@ -166,11 +159,18 @@ export MAIL_DOMAINS='["your.domain"]'
 
 脚本幂等：资源已存在则复用，重复执行安全。
 
+> **关于 `JWT_SECRET`：不用生成 32 位随机串。**
+> 它只用来给登录会话签名，值本身多长、多随机并不重要，**关键是只有你自己知道**。
+> 直接填 `web3hennamail` 这种随手打的字符串完全够用，也好记。
+> 唯一要注意的是部署后别改——改了会让所有已登录用户被迫重新登录。
+> 它同时是 `/api/init/<JWT_SECRET>` 这条初始化接口的口令，所以别泄露。
+
 ### 部署后的收尾（DNS 侧， unavoidable）
 
 1. Cloudflare 控制台 → 域名 → **Email → Email Routing**，开启并把 MX 指向 Cloudflare。
 2. Routing rules 中把目标地址 / Catch-all → **Send to Worker** → 选 `henna-mail`。
 3. 访问 `https://<你的域名>/api/init/<JWT_SECRET>` 完成建表（脚本与 Actions 已自动调用，也可手动兜底）。
+   用本文的示例值就是：`https://<你的域名>/api/init/web3hennamail`
 
 ## 六、本地开发
 
