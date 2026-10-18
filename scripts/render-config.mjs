@@ -3,27 +3,62 @@
  * 把资源 ID 与运行时变量写入 worker/wrangler.jsonc（幂等，可重复执行）。
  *
  * 环境变量：D1_ID, KV_ID, R2_BUCKET, JWT_SECRET, ADMIN_EMAIL, MAIL_DOMAINS
- * MAIL_DOMAINS 容错：JSON 数组 / 逗号分隔 / 单个域名 / 带引号或星号都吃
+ *
+ * 实现方式：先解析为 JS 对象 → 改字段 → 重新序列化。
+ * 绝不用正则去改 JSON 字符串——值里一旦含转义引号就会写出非法 JSON。
  */
 import fs from 'node:fs';
 import path from 'node:path';
 
 const file = path.resolve('worker/wrangler.jsonc');
-let src = fs.readFileSync(file, 'utf8');
+const original = fs.readFileSync(file, 'utf8');
 
-const D1_ID = process.env.D1_ID;
-const KV_ID = process.env.KV_ID;
-const R2 = process.env.R2_BUCKET;
-const JWT = process.env.JWT_SECRET;
-const ADMIN = process.env.ADMIN_EMAIL;
+/** 去掉 // 与 /* *\/ 注释，便于 JSON.parse（不影响字符串内的 //） */
+function stripComments(s) {
+  let out = '';
+  let inStr = false;
+  let esc = false;
+  let inLine = false;
+  let inBlock = false;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    const n = s[i + 1];
+    if (inLine) {
+      if (c === '\n') { inLine = false; out += c; }
+      continue;
+    }
+    if (inBlock) {
+      if (c === '*' && n === '/') { inBlock = false; i++; }
+      continue;
+    }
+    if (inStr) {
+      out += c;
+      if (esc) esc = false;
+      else if (c === '\\') esc = true;
+      else if (c === '"') inStr = false;
+      continue;
+    }
+    if (c === '"') { inStr = true; out += c; continue; }
+    if (c === '/' && n === '/') { inLine = true; i++; continue; }
+    if (c === '/' && n === '*') { inBlock = true; i++; continue; }
+    out += c;
+  }
+  return out;
+}
+
+let cfg;
+try {
+  cfg = JSON.parse(stripComments(original));
+} catch (e) {
+  console.error('✗ wrangler.jsonc 本身不是合法 JSON：', e.message);
+  process.exit(1);
+}
 
 /** 把任意写法的域名输入规整成 string[] */
 function parseDomains(raw) {
   if (!raw) return null;
   let s = String(raw).trim();
-  if (!s || s === '[]' || s === '""' || s === "''") return null;
-
-  // 先尝试当 JSON 数组解析
+  if (!s || s === '[]' || s === '""' || s === "''" || s === 'null') return null;
   try {
     const arr = JSON.parse(s);
     if (Array.isArray(arr)) {
@@ -31,10 +66,8 @@ function parseDomains(raw) {
       if (out.length) return out;
     }
   } catch {
-    /* 不是合法 JSON，走下面的宽松解析 */
+    /* 非 JSON，走宽松解析 */
   }
-
-  // 宽松解析：去掉 [] " ' 等包裹符，再按逗号/空白切分
   const out = s
     .replace(/^\[|\]$/g, '')
     .replace(/["']/g, '')
@@ -44,54 +77,42 @@ function parseDomains(raw) {
   return out.length ? out : null;
 }
 
+const D1_ID = process.env.D1_ID;
+const KV_ID = process.env.KV_ID;
+const R2 = process.env.R2_BUCKET;
+const JWT = process.env.JWT_SECRET;
+const ADMIN = process.env.ADMIN_EMAIL;
 const DOMAIN_LIST = parseDomains(process.env.MAIL_DOMAINS);
 
-/**
- * 替换某个 key 的字符串值。
- * 值部分用 `"(?:[^"\\]|\\.)*"` 匹配，才能正确处理值内被转义的引号
- * （旧版用 `"[^"]*"` 会在 \" 处截断，写出非法 JSON）。
- */
-function setString(key, value) {
-  if (value === undefined || value === null || value === '') return;
-  const re = new RegExp(`("${key}"\\s*:\\s*)"(?:[^"\\\\]|\\\\.)*"`);
-  const next = `${key} 占位`;
-  if (!re.test(src)) {
-    console.warn(`! 未在 wrangler.jsonc 中找到 ${key}，跳过`);
-    return;
-  }
-  // 先占位再替换，避免 $& 等特殊序列被当成替换模式
-  src = src.replace(re, (_m, head) => `${head}"${String(value).replace(/"/g, '\\"')}"`);
-  void next;
-}
-
 // ── 资源绑定
-src = src.replace(/"REPLACE_D1_DATABASE_ID"/g, `"${D1_ID ?? 'REPLACE_D1_DATABASE_ID'}"`);
-src = src.replace(/"REPLACE_KV_NAMESPACE_ID"/g, `"${KV_ID ?? 'REPLACE_KV_NAMESPACE_ID'}"`);
-if (R2) src = src.replace(/("bucket_name"\s*:\s*)"(?:[^"\\]|\\.)*"/, (_m, head) => `${head}"${R2}"`);
-
-// ── 运行时变量
-setString('JWT_SECRET', JWT);
-setString('ADMIN_EMAIL', ADMIN);
-if (DOMAIN_LIST) {
-  const asString = JSON.stringify(DOMAIN_LIST); // '["a.com","b.com"]'
-  setString('MAIL_DOMAINS', asString);
-  console.log(`✓ MAIL_DOMAINS = ${asString}`);
-} else {
-  console.warn('! MAIL_DOMAINS 为空，沿用配置默认值；发信域名白名单需要后续手动改');
+if (D1_ID && Array.isArray(cfg.d1_databases) && cfg.d1_databases[0]) {
+  cfg.d1_databases[0].database_id = D1_ID;
+}
+if (KV_ID && Array.isArray(cfg.kv_namespaces) && cfg.kv_namespaces[0]) {
+  cfg.kv_namespaces[0].id = KV_ID;
+}
+if (R2 && Array.isArray(cfg.r2_buckets) && cfg.r2_buckets[0]) {
+  cfg.r2_buckets[0].bucket_name = R2;
 }
 
-fs.writeFileSync(file, src);
+// ── 运行时变量（MAIL_DOMAINS 存 JSON 数组字符串，由 worker 自行 JSON.parse）
+cfg.vars = cfg.vars || {};
+if (JWT) cfg.vars.JWT_SECRET = JWT;
+if (ADMIN) cfg.vars.ADMIN_EMAIL = ADMIN;
+if (DOMAIN_LIST) cfg.vars.MAIL_DOMAINS = JSON.stringify(DOMAIN_LIST);
 
-// ── 写回前自检：确认能作为 JSON 解析（去掉注释后）
+fs.writeFileSync(file, JSON.stringify(cfg, null, 2) + '\n');
+
+// ── 自检
 try {
-  const stripped = src
-    .replace(/\\"|"(?:\\"|[^"])*"/g, (m) => (m.startsWith('\\') ? m : '""'))
-    .replace(/\/\/[^\n]*/g, '')
-    .replace(/\/\*[\s\S]*?\*\//g, '');
-  JSON.parse(stripped);
-  console.log('✓ wrangler.jsonc 已渲染且 JSON 结构自检通过');
+  JSON.parse(fs.readFileSync(file, 'utf8'));
+  console.log('✓ wrangler.jsonc 已渲染');
+  console.log('  D1       :', cfg.d1_databases?.[0]?.database_id);
+  console.log('  KV       :', cfg.kv_namespaces?.[0]?.id);
+  console.log('  R2       :', cfg.r2_buckets?.[0]?.bucket_name);
+  console.log('  ADMIN    :', cfg.vars.ADMIN_EMAIL);
+  console.log('  DOMAINS  :', cfg.vars.MAIL_DOMAINS);
 } catch (e) {
-  console.error('✗ 渲染后 JSON 结构非法：', e.message);
-  console.error(src);
+  console.error('✗ 渲染结果非法：', e.message);
   process.exit(1);
 }
