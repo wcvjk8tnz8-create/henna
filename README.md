@@ -36,7 +36,7 @@
 | Worker TypeScript 类型检查（`tsc --noEmit`） | 通过，0 error |
 | Worker 打包（esbuild bundle） | 通过，235 KB |
 | 前端生产构建（Vite + Tailwind v4） | 通过，CSS 28 KB / JS 97 KB |
-| 冒烟测试（12 项）+ 域名解析回归（11 项） | 23 passed, 0 failed |
+| 冒烟测试（12 项）+ 域名解析回归（11 项）+ 管理员保护（16 项） | 39 passed, 0 failed |
 | 界面预览截图 | 10 张（含移动端），UI 区 0 个蓝紫像素 |
 
 冒烟测试覆盖：口令哈希与校验、JWT 签发/验签/过期拒绝、服务商优先级调度、故障自动转移、指定通道（pinned）、全部失败与无通道的兜底报错。
@@ -182,6 +182,11 @@ export interface MailProvider {
 | 卡片圆角 | 0~28px |
 
 六个预设：暖赭（默认）/ 陶土 / 墨黑 / 森绿 / 酒红 / 琥珀。
+也可以直接填 hex 自由配色，面板会实时显示推导出的 50~700 色阶。
+
+管理员保护：邮箱前缀为 `admin` 的账号（如 `admin@example.com`）恒为管理员，
+后台无法降级、邀请码也无法覆盖。若历史上已被降级，**重新登录即自动恢复**
+—— 降级后唯一能改回管理员的入口就是后台本身，所以这条自愈写在登录路径上。
 
 原理：Tailwind v4 的 `@theme` 虽是编译期的，但它的值可以是 `var()`。
 `--color-henna-500` 指向 `--brand-500`，而 CSS 变量在运行时解析，
@@ -304,6 +309,7 @@ cd web    && npm i && npm run dev        # http://localhost:5173 (代理 /api �
 | `08-system` | 系统设置 |
 | `09-login` | 登录页（云层背景） |
 | `10-mobile` | 移动端 |
+| `11-sidebar-collapsed` | 侧边栏收起 |
 
 预览图由 `tools/shot-mock.mjs` 用 mock 数据渲染，**非线上实例**。
 登录页的云层由 `tools/render-shader.py` 在 CPU 上复算同一份 GLSL 后合成

@@ -5,6 +5,7 @@ import { authRequired, adminOnly, type AppEnv } from '../middleware/auth';
 import { qAll, qOne, exec } from '../db/query';
 import { randomToken } from '../lib/crypto';
 import { clamp } from '../lib/util';
+import { resolveRole } from '../lib/admin-guard';
 
 const admin = new Hono<{ Bindings: Env; Variables: AppEnv['Variables'] }>();
 
@@ -25,15 +26,24 @@ admin.put('/users/:id', async (c) => {
     quota?: number;
     status?: string;
   };
+  const target = await qOne<{ id: number; email: string; role: string }>(
+    c.env.DB,
+    'SELECT id, email, role FROM user WHERE id = ?',
+    id,
+  );
+  if (!target) throw new HttpError('用户不存在', 404);
+  // admin@ 前缀的账号不可降级，否则管理员会把自己锁在后台外面
+  const role = resolveRole(target.email, body.role);
+  const downgradeBlocked = body.role === 'user' && role === 'admin';
   await exec(
     c.env.DB,
     'UPDATE user SET role = COALESCE(?, role), quota = COALESCE(?, quota), status = COALESCE(?, status) WHERE id = ?',
-    body.role ?? null,
+    role,
     body.quota ?? null,
     body.status ?? null,
     id,
   );
-  return c.json(ok({ updated: true }));
+  return c.json(ok({ updated: true, role, downgradeBlocked }));
 });
 
 admin.delete('/users/:id', async (c) => {

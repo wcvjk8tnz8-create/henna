@@ -6,6 +6,11 @@ import { fmtTime, store, toast } from '../store';
 const stats = ref<Stats | null>(null);
 const users = ref<AdminUser[]>([]);
 const invites = ref<Invite[]>([]);
+/** admin@ 前缀的账号恒为管理员 */
+function isProtected(email: string): boolean {
+  return String(email ?? '').trim().toLowerCase().split('@')[0] === 'admin';
+}
+
 const inviteForm = ref({ count: 5, quota: 50, role: 'user', maxUse: 1, days: 7 });
 
 const maxTrend = computed(() => Math.max(1, ...(stats.value?.trend ?? []).map((t) => t.n)));
@@ -155,6 +160,8 @@ onMounted(load);
               <select
                 class="rounded border border-sand-200 px-1.5 py-1 text-xs"
                 :value="u.role"
+                :disabled="isProtected(u.email) || u.id === store.me?.id"
+                :title="isProtected(u.email) ? 'admin@ 前缀的账号恒为管理员，不可降级' : u.id === store.me?.id ? '不能修改自己的角色' : undefined"
                 @change="updateUser(u, { role: ($event.target as HTMLSelectElement).value })"
               >
                 <option value="user">user</option>

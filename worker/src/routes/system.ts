@@ -6,6 +6,7 @@ import { ensureSchema } from '../db/schema';
 import { qOne, exec, qAll } from '../db/query';
 import { parseDomains } from '../lib/util';
 import { ensureSelfAddress } from '../lib/selfaddress';
+import { restoreProtectedAdmins } from '../lib/admin-guard';
 import {
   getAllSettings,
   setSettings,
@@ -232,6 +233,13 @@ export const initHandler = async (c: Context<{ Bindings: Env }>) => {
       now,
       now,
     );
+  }
+
+  // 自愈：把 admin@ 前缀却被降级的账号改回管理员（老数据修复，幂等）
+  try {
+    await restoreProtectedAdmins(c.env);
+  } catch {
+    /* 修复失败不影响初始化 */
   }
 
   // 给已存在的账号补上「登录邮箱」作为发件地址（老数据升级用，幂等）

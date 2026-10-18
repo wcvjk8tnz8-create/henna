@@ -13,6 +13,7 @@ import { hashPassword, randomHex, randomToken } from '../lib/crypto';
 import { signJwt } from '../lib/jwt';
 import { qOne, exec } from '../db/query';
 import { parseDomains } from '../lib/util';
+import { resolveRole } from '../lib/admin-guard';
 import {
   PROVIDERS,
   buildAuthorizeUrl,
@@ -132,7 +133,8 @@ oauth.get('/:provider/callback', async (c) => {
     if (!isTrue(s.allow_register)) throw new HttpError('站点已关闭注册', 403);
 
     const total = await qOne<{ n: number }>(c.env.DB, 'SELECT COUNT(*) AS n FROM user');
-    const role = total && total.n === 0 ? 'admin' : 'user';
+    // admin@ 前缀恒为管理员
+    const role = resolveRole(profile.email, total && total.n === 0 ? 'admin' : 'user');
     const quota = Number(c.env.DEFAULT_QUOTA || 50);
     const salt = randomHex(16);
     // 第三方登录没有密码，随机生成一个不可用的占位

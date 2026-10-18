@@ -4,7 +4,15 @@ import { api, type SettingsMap, type StorageStatus } from '../api';
 import { store, toast } from '../store';
 import Toggle from '../components/Toggle.vue';
 import Section from '../components/Section.vue';
-import { THEME_PRESETS, applyTheme, themeFromSettings, type ThemeSpec } from '../lib/theme';
+import {
+  THEME_PRESETS,
+  applyTheme,
+  buildScale,
+  buildAccent,
+  buildSurface,
+  themeFromSettings,
+  type ThemeSpec,
+} from '../lib/theme';
 
 const s = ref<SettingsMap>({});
 const loading = ref(true);
@@ -60,6 +68,17 @@ function usePreset(p: (typeof presets)[number]) {
   theme.value = { ...p.spec };
 }
 
+/** 当前主色推导出的色阶，用于直观确认自定义色生效 */
+const scale = computed(() => buildScale(theme.value.primary));
+const accentScale = computed(() => buildAccent(theme.value.accent));
+const surfaceScale = computed(() => buildSurface(theme.value.surface));
+
+/** hex 输入框允许手填，非法值不参与预览（避免半截输入把界面搞花） */
+function onHexInput(which: 'primary' | 'accent' | 'surface', v: string) {
+  const t = v.trim();
+  if (/^#[0-9a-fA-F]{6}$/.test(t)) theme.value[which] = t.toLowerCase();
+}
+
 /** 从已保存的设置同步一次（进入页面 / 保存成功后） */
 function syncTheme() {
   theme.value = themeFromSettings(s.value);
@@ -84,15 +103,17 @@ async function save(keys?: string[]) {
   saving.value = true;
   try {
     const patch: SettingsMap = {};
-    // 主题单独一份：只有整体保存或显式要求时才带上
+    // 先铺开已有设置，再用主题面板的当前值覆盖。
+    // 顺序反过来的话，s.value 里的旧主题色会把上面刚取到的新值盖掉
+    // —— 表现为「改了颜色、闪一下又变回暖赭」。
+    const src = keys ?? Object.keys(s.value);
+    for (const k of src) patch[k] = s.value[k];
     if (!keys || keys.includes('theme')) {
       patch.theme_primary = theme.value.primary;
       patch.theme_accent = theme.value.accent;
       patch.theme_surface = theme.value.surface;
       patch.theme_radius = String(theme.value.radius);
     }
-    const src = keys ?? Object.keys(s.value);
-    for (const k of src) patch[k] = s.value[k];
     const r = await api.put<{ settings: SettingsMap }>('/system/settings', patch);
     s.value = r.settings;
     syncTheme();
@@ -193,21 +214,76 @@ onMounted(load);
             <label class="label">主色</label>
             <div class="flex items-center gap-2">
               <input v-model="theme.primary" type="color" class="h-8 w-8 shrink-0 rounded border border-sand-300" />
-              <input v-model="theme.primary" class="input" placeholder="#b4462f" />
+              <input
+                :value="theme.primary"
+                class="input font-mono text-xs"
+                placeholder="#b4462f"
+                @input="onHexInput('primary', ($event.target as HTMLInputElement).value)"
+              />
             </div>
           </div>
           <div>
             <label class="label">点缀色</label>
             <div class="flex items-center gap-2">
               <input v-model="theme.accent" type="color" class="h-8 w-8 shrink-0 rounded border border-sand-300" />
-              <input v-model="theme.accent" class="input" placeholder="#c97b3c" />
+              <input
+                :value="theme.accent"
+                class="input font-mono text-xs"
+                placeholder="#c97b3c"
+                @input="onHexInput('accent', ($event.target as HTMLInputElement).value)"
+              />
             </div>
           </div>
           <div>
             <label class="label">页面底色</label>
             <div class="flex items-center gap-2">
               <input v-model="theme.surface" type="color" class="h-8 w-8 shrink-0 rounded border border-sand-300" />
-              <input v-model="theme.surface" class="input" placeholder="#faf6f1" />
+              <input
+                :value="theme.surface"
+                class="input font-mono text-xs"
+                placeholder="#faf6f1"
+                @input="onHexInput('surface', ($event.target as HTMLInputElement).value)"
+              />
+            </div>
+          </div>
+        </div>
+
+        <!-- 推导出的色阶 -->
+        <div class="mt-3 space-y-1.5">
+          <div class="flex items-center gap-2">
+            <span class="w-14 shrink-0 text-[11px] text-ink-500">主色阶</span>
+            <div class="flex flex-1 overflow-hidden rounded-lg">
+              <div
+                v-for="(v, k) in scale"
+                :key="k"
+                class="h-6 flex-1"
+                :style="{ backgroundColor: v }"
+                :title="`${k} ${v}`"
+              />
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="w-14 shrink-0 text-[11px] text-ink-500">点缀</span>
+            <div class="flex flex-1 overflow-hidden rounded-lg">
+              <div
+                v-for="(v, k) in accentScale"
+                :key="k"
+                class="h-6 flex-1"
+                :style="{ backgroundColor: v }"
+                :title="`${k} ${v}`"
+              />
+            </div>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="w-14 shrink-0 text-[11px] text-ink-500">底色</span>
+            <div class="flex flex-1 overflow-hidden rounded-lg border border-sand-200">
+              <div
+                v-for="(v, k) in surfaceScale"
+                :key="k"
+                class="h-6 flex-1"
+                :style="{ backgroundColor: v }"
+                :title="`${k} ${v}`"
+              />
             </div>
           </div>
         </div>

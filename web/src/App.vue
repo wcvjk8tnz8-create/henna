@@ -1,13 +1,22 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue';
-import { RouterView, useRoute } from 'vue-router';
+import { computed, onMounted, ref, watch } from 'vue';
+import { RouterView, useRoute, useRouter } from 'vue-router';
 import { loadConfig, loadMe, logout, store } from './store';
 
 const route = useRoute();
+const router = useRouter();
+
+/** 侧边栏折叠状态，记在本地，换设备互不影响 */
+const COLLAPSE_KEY = 'henna.sidebar.collapsed';
+const collapsed = ref(localStorage.getItem(COLLAPSE_KEY) === '1');
+function toggleSidebar() {
+  collapsed.value = !collapsed.value;
+  localStorage.setItem(COLLAPSE_KEY, collapsed.value ? '1' : '0');
+}
 
 const navs = computed(() => [
   { to: '/', label: '收件箱', icon: 'inbox' },
-  { to: '/compose', label: '发信', icon: 'send' },
+  { to: '/compose', label: '写信', icon: 'send' },
   { to: '/addresses', label: '邮箱地址', icon: 'at' },
   { to: '/providers', label: '发信服务商', icon: 'plug' },
   { to: '/rules', label: '分发规则', icon: 'route' },
@@ -23,6 +32,9 @@ onMounted(async () => {
   await loadMe();
 });
 
+/** 写信页自己有「发送」，右下角按钮只在别的页面出现 */
+const showComposeFab = computed(() => route.path !== '/compose' && route.path !== '/login');
+
 const paths: Record<string, string> = {
   inbox: 'M4 13h4l2 3h4l2-3h4M4 13l4-7h8l4 7v6H4v-6z',
   send: 'M3 11l18-7-7 18-2.5-7.5L3 11z',
@@ -34,17 +46,23 @@ const paths: Record<string, string> = {
   gear: 'M12 15a3 3 0 100-6 3 3 0 000 6zm8-3a8 8 0 00-.2-1.7l1.7-1.3-1.7-3-2 .8a8 8 0 00-2.9-1.7L14.5 3h-3.4l-.4 2.1a8 8 0 00-2.9 1.7l-2-.8-1.7 3 1.7 1.3A8 8 0 004 12c0 .6.1 1.2.2 1.7l-1.7 1.3 1.7 3 2-.8a8 8 0 002.9 1.7l.4 2.1h3.4l.4-2.1a8 8 0 002.9-1.7l2 .8 1.7-3-1.7-1.3c.1-.5.2-1.1.2-1.7z',
   chart: 'M4 20V10M10 20V4M16 20v-7M22 20H2',
   sliders: 'M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0M16 4v4M10 10v4M20 16v4',
+  collapse: 'M15 6l-6 6 6 6',
+  expand: 'M9 6l6 6-6 6',
 };
 </script>
 
 <template>
   <div class="flex h-full">
-    <!-- 侧边栏（桌面） -->
-    <aside class="hidden w-60 shrink-0 flex-col border-r border-sand-200 bg-white md:flex">
-      <div class="flex items-center gap-2.5 px-5 py-5">
-        <img src="/logo-512.png" alt="Henna Mail" class="h-9 w-auto" />
-        <div class="leading-tight">
-          <div class="text-sm font-semibold text-ink-900">{{ store.config?.appName ?? 'Henna Mail' }}</div>
+    <!-- 侧边栏（桌面，可折叠） -->
+    <aside
+      class="hidden shrink-0 flex-col border-r border-sand-200 bg-white transition-[width] duration-200 md:flex"
+      :class="collapsed ? 'w-[68px]' : 'w-60'"
+    >
+      <!-- 头部：logo + 折叠按钮 -->
+      <div class="flex items-center gap-2.5 px-4 py-5" :class="collapsed ? 'justify-center px-2' : ''">
+        <img src="/logo-512.png" alt="Henna Mail" class="h-9 w-auto shrink-0" />
+        <div v-if="!collapsed" class="min-w-0 flex-1 leading-tight">
+          <div class="truncate text-sm font-semibold text-ink-900">{{ store.config?.appName ?? 'Henna Mail' }}</div>
           <div class="text-[11px] text-ink-500">邮箱分发系统</div>
         </div>
       </div>
@@ -55,23 +73,47 @@ const paths: Record<string, string> = {
           :key="n.to"
           :to="n.to"
           class="nav-item"
-          :class="{ 'nav-item-active': route.path === n.to }"
+          :class="{ 'nav-item-active': route.path === n.to, 'justify-center !px-0': collapsed }"
+          :title="collapsed ? n.label : undefined"
         >
-          <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.8">
+          <svg viewBox="0 0 24 24" class="h-4 w-4 shrink-0" fill="none" stroke="currentColor" stroke-width="1.8">
             <path :d="paths[n.icon]" stroke-linecap="round" />
           </svg>
-          {{ n.label }}
+          <span v-if="!collapsed">{{ n.label }}</span>
         </RouterLink>
       </nav>
 
+      <!-- 折叠开关 -->
+      <div class="border-t border-sand-200 p-2">
+        <button
+          class="nav-item w-full"
+          :class="collapsed ? 'justify-center !px-0' : ''"
+          :title="collapsed ? '展开侧边栏' : '收起侧边栏'"
+          @click="toggleSidebar"
+        >
+          <svg viewBox="0 0 24 24" class="h-4 w-4 shrink-0" fill="none" stroke="currentColor" stroke-width="1.8">
+            <path :d="collapsed ? paths.expand : paths.collapse" stroke-linecap="round" />
+          </svg>
+          <span v-if="!collapsed">收起侧边栏</span>
+        </button>
+      </div>
+
       <div class="border-t border-sand-200 p-3">
         <div v-if="store.me" class="mb-2 px-1">
-          <div class="truncate text-sm font-medium text-ink-900">{{ store.me.email }}</div>
-          <div class="text-[11px] text-ink-500">
+          <div v-if="!collapsed" class="truncate text-sm font-medium text-ink-900">{{ store.me.email }}</div>
+          <div v-else class="mx-auto mb-1 grid h-8 w-8 place-items-center rounded-full bg-henna-50 text-[11px] font-semibold text-henna-600">
+            {{ (store.me.email[0] ?? '?').toUpperCase() }}
+          </div>
+          <div v-if="!collapsed" class="text-[11px] text-ink-500">
             配额 {{ store.me.used }} / {{ store.me.quota }} · {{ store.me.role }}
           </div>
         </div>
-        <button class="btn-ghost w-full" @click="logout">退出登录</button>
+        <button class="btn-ghost w-full" :class="collapsed ? '!px-0' : ''" :title="collapsed ? '退出登录' : undefined" @click="logout">
+          <svg v-if="collapsed" viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="1.8">
+            <path d="M15 17l5-5-5-5M20 12H9M12 3H5v18h7" stroke-linecap="round" />
+          </svg>
+          <span v-else>退出登录</span>
+        </button>
       </div>
     </aside>
 
@@ -109,10 +151,24 @@ const paths: Record<string, string> = {
       </main>
     </div>
 
+    <!-- 右下角写信按钮（Gmail 风格） -->
+    <button
+      v-if="showComposeFab"
+      class="fixed bottom-6 right-6 z-40 flex items-center gap-2 rounded-full bg-henna-500 px-4 py-3 text-sm font-medium shadow-lg transition hover:bg-henna-600 active:bg-henna-700 md:bottom-8 md:right-8"
+      style="color: var(--brand-on, #fff)"
+      title="写信"
+      @click="router.push('/compose')"
+    >
+      <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M12 5v14M5 12h14" stroke-linecap="round" />
+      </svg>
+      <span class="hidden sm:inline">写信</span>
+    </button>
+
     <!-- Toast -->
     <div
       v-if="store.toast"
-      class="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-lg px-4 py-2.5 text-sm text-white shadow-lg"
+      class="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-lg px-4 py-2.5 text-sm shadow-lg"
       :class="store.toast.kind === 'ok' ? 'bg-jade-600 text-white' : 'bg-henna-600'"
       :style="store.toast.kind === 'ok' ? {} : { color: 'var(--brand-on, #fff)' }"
     >

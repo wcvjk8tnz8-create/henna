@@ -6,6 +6,7 @@ import { fail, HttpError, ok } from '../lib/http';
 import { authRequired, type AppEnv } from '../middleware/auth';
 import { qOne, exec } from '../db/query';
 import { parseDomains } from '../lib/util';
+import { isProtectedAdmin, resolveRole } from '../lib/admin-guard';
 import { ensureSelfAddress } from '../lib/selfaddress';
 import { getAllSettings, isTrue } from '../db/settings';
 import { verifyTurnstile } from '../lib/turnstile';
@@ -54,6 +55,8 @@ auth.post('/register', async (c) => {
 
   const total = await qOne<{ n: number }>(c.env.DB, 'SELECT COUNT(*) AS n FROM user');
   let role = total && total.n === 0 ? 'admin' : 'user';
+  // admin@ 前缀恒为管理员，不受邀请码影响
+  role = resolveRole(email, role);
   let quota = Number(c.env.DEFAULT_QUOTA || 50);
 
   if (code) {
@@ -65,7 +68,8 @@ auth.post('/register', async (c) => {
     if (!inv) throw new HttpError('邀请码无效');
     if (inv.used >= inv.max_use) throw new HttpError('邀请码已被用完');
     if (inv.expire_at && inv.expire_at < Date.now()) throw new HttpError('邀请码已过期');
-    role = inv.role;
+    // 邀请码也不能把 admin@ 前缀的账号降成普通用户
+    role = resolveRole(email, inv.role);
     quota = inv.quota;
     await exec(c.env.DB, 'UPDATE invite_code SET used = used + 1 WHERE id = ?', inv.id);
   } else if (role !== 'admin') {
@@ -138,8 +142,17 @@ auth.post('/login', async (c) => {
   if (!row || row.status !== 'active') throw new HttpError('用户不存在或已停用', 401);
   const okPwd = await verifyPassword(password, row.salt, row.password_hash);
   if (!okPwd) throw new HttpError('密码错误', 401);
+
+  // 自愈：admin@ 前缀的账号曾被降过级的话，登录时恢复为管理员。
+  // 这是唯一的自救路径 —— 降成 user 后就再也进不了后台改回来了。
+  let role: 'admin' | 'user' = row.role as 'admin' | 'user';
+  if (isProtectedAdmin(row.email) && role !== 'admin') {
+    await exec(c.env.DB, "UPDATE user SET role = 'admin' WHERE id = ?", row.id);
+    role = 'admin';
+  }
+
   const token = await signJwt(
-    { sub: row.id, email: row.email, role: row.role as 'admin' | 'user' },
+    { sub: row.id, email: row.email, role },
     c.env.JWT_SECRET,
   );
   return c.json(
@@ -148,7 +161,7 @@ auth.post('/login', async (c) => {
       user: {
         id: row.id,
         email: row.email,
-        role: row.role,
+        role,
         quota: row.quota,
         used: row.used,
         api_key: row.api_key,
