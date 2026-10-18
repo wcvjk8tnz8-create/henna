@@ -66,10 +66,17 @@ const curl = computed(() => `curl -X POST ${location.origin}/api/send \\
         当前没有绑定 R2，收到的邮件附件只保存文件名与大小，不保存内容。
         收信、发信、规则分发不受影响。绑一个 R2 桶再重新部署一次即可开启。
       </p>
-      <pre class="overflow-auto rounded-lg bg-sand-100 p-3 text-[11px] leading-relaxed"># 仓库 Secrets 里加一行
+      <pre class="overflow-auto rounded-lg bg-sand-100 p-3 text-[11px] leading-relaxed"># 1. 给 API 令牌加权限（最容易漏的一步）
+#    Cloudflare → 我的个人资料 → API 令牌 → 编辑
+#    添加「账户 / R2 存储桶 / 编辑」
+
+# 2. 仓库 Secrets 加一行
 R2_BUCKET_NAME = henna-mail-r2      # 你的桶名，留空则自动创建
 
-# 然后重新运行 deploy 工作流</pre>
+# 3. 重新运行 deploy 工作流</pre>
+      <p class="mt-2 text-[11px] text-ink-500">
+        若日志里出现「R2 不可用 · HTTP 403」，就是令牌权限不够，补上第 1 步即可。
+      </p>
     </div>
 
     <div class="card mt-4 p-5">

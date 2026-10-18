@@ -18,8 +18,13 @@ export interface Env {
   APP_NAME: string;
   JWT_SECRET: string;
   ADMIN_EMAIL: string;
-  /** JSON 字符串数组，例如 ["a.com","b.com"] */
-  MAIL_DOMAINS: string;
+  /**
+   * 托管域名。两种形态都可能：
+   * - TOML/JSON 数组 → 运行时是 string[]
+   * - 字符串 → '[\"a.com\"]' 或 'a.com,b.com'
+   * 统一用 lib/util 的 parseDomains() 解析，不要直接 JSON.parse。
+   */
+  MAIL_DOMAINS: string | string[];
   ALLOW_REGISTER: string;
   /** 每用户每日发信配额 */
   DEFAULT_QUOTA: string;

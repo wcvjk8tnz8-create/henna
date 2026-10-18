@@ -1,15 +1,42 @@
 import type { SessionUser } from '../env';
 
-export function parseDomains(env: { MAIL_DOMAINS: string }): string[] {
-  try {
-    const arr = JSON.parse(env.MAIL_DOMAINS || '[]') as unknown;
-    return Array.isArray(arr) ? arr.map(String) : [];
-  } catch {
-    return (env.MAIL_DOMAINS || '')
-      .split(',')
-      .map((s) => s.trim())
+/**
+ * 解析托管域名列表，永不抛异常。
+ *
+ * 关键：MAIL_DOMAINS 在 wrangler 配置里可能是两种形态——
+ *   - JSON/TOML 数组  `["a.com"]`  → 运行时是真正的 JS 数组
+ *   - 字符串          '"[\"a.com\"]"' 或 'a.com,b.com'
+ * 早期版本只按字符串处理，TOML 数组传进来后 JSON.parse(数组) 会抛
+ * SyntaxError，进而让 /api/system/config 直接 500 —— 就是那个
+ * 满屏 "internal error" 的来源。这里三种形态全兼容。
+ */
+export function parseDomains(env: { MAIL_DOMAINS?: string | string[] | unknown }): string[] {
+  const raw: unknown = env?.MAIL_DOMAINS;
+
+  // 形态一：已经是数组（TOML/JSON 数组）
+  if (Array.isArray(raw)) {
+    return raw.map((s) => String(s).trim()).filter(Boolean);
+  }
+
+  // 形态二：字符串
+  if (typeof raw === 'string') {
+    const s = raw.trim();
+    if (!s) return [];
+    try {
+      const arr = JSON.parse(s) as unknown;
+      if (Array.isArray(arr)) return arr.map((x) => String(x).trim()).filter(Boolean);
+    } catch {
+      /* 不是 JSON，走逗号分隔 */
+    }
+    return s
+      .replace(/^\[|\]$/g, '')
+      .replace(/["']/g, '')
+      .split(/[\s,;]+/)
+      .map((x) => x.trim())
       .filter(Boolean);
   }
+
+  return [];
 }
 
 export function now(): number {

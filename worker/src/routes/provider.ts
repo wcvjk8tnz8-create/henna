@@ -5,6 +5,7 @@ import { authRequired, type AppEnv } from '../middleware/auth';
 import { qAll, qOne, exec } from '../db/query';
 import { PROVIDERS, listProviderMeta, type ProviderRow } from '../providers';
 import type { ProviderConfig, ProviderKind } from '../providers/types';
+import { parseDomains } from '../lib/util';
 
 const provider = new Hono<{ Bindings: Env; Variables: AppEnv['Variables'] }>();
 
@@ -122,7 +123,7 @@ provider.post('/:id/test', authRequired, async (c) => {
   const impl = PROVIDERS[row.kind];
   if (!impl) throw new HttpError('未注册的服务商');
   const cfg = parseConfig(row.config);
-  const from = cfg.defaultFrom || `no-reply@${(c.env.MAIL_DOMAINS ? JSON.parse(c.env.MAIL_DOMAINS)[0] : undefined) ?? 'example.com'}`;
+  const from = cfg.defaultFrom || `no-reply@${parseDomains(c.env)[0] ?? 'example.com'}`;
   const res = await impl.send(
     {
       from,

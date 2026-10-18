@@ -102,8 +102,14 @@ async function upsertKV() {
 async function upsertR2() {
   const list = await cf(`/accounts/${ACCOUNT}/r2/buckets?per_page=100`);
   if (!list.ok) {
+    const codes = (list.json.errors || []).map((e) => e.code).join(',');
     const msg = (list.json.errors || []).map((e) => `${e.code} ${e.message}`).join('; ');
-    console.warn(`! R2 不可用（${msg || list.status}），将跳过附件存储`);
+    console.warn(`! R2 不可用（HTTP ${list.status}${codes ? ' / ' + codes : ''}）：${msg || '未知错误'}`);
+    console.warn('  最常见原因：API 令牌缺少 R2 权限。');
+    console.warn('  解决：Cloudflare → 我的个人资料 → API 令牌 → 编辑该令牌 → 添加');
+    console.warn('        「账户 / R2 存储桶 / 编辑」，或把 Workers R2 相关权限勾上。');
+    console.warn('  也可以直接在 Secrets 里填 R2_BUCKET_NAME 指定已有桶（仍需读权限来校验）。');
+    console.warn('  → 本次将跳过附件存储，其余功能不受影响。');
     return null;
   }
   const buckets = list.json.result?.buckets || [];
@@ -118,6 +124,7 @@ async function upsertR2() {
   if (!created.ok || !created.json?.result?.name) {
     const msg = (created.json.errors || []).map((e) => `${e.code} ${e.message}`).join('; ');
     console.warn(`! 创建 R2 桶失败（${msg || created.status}），将跳过附件存储`);
+    console.warn('  若是权限报错，请给 API 令牌加上「R2 存储桶 / 编辑」后重跑。');
     return null;
   }
   console.log(`✓ R2 已创建：${R2_NAME}`);
