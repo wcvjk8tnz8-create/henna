@@ -194,6 +194,31 @@ export interface MailProvider {
 透明度写法（`bg-henna-500/10`）会编译成 `color-mix(... var(--color-henna-500) ...)`，
 同样运行时解析，一并生效。
 
+### 🏠 落地页（纯前端）
+
+`landing/index.html` —— **单文件、零依赖、零构建**，双击就能打开。
+构建时会复制到 `dist/landing.html`，部署后访问 `/landing.html`；
+登录页底部有「返回首页」入口。
+
+| 区块 | 内容 |
+|---|---|
+| Hero | 見字如面，一紙千金 + 丝绸背景 |
+| 数据条 | 99.9% 可用性 / 0 广告 / 8 通道 / 24/7 |
+| 特性 | 6 张卡片 |
+| 寓意 | 為什麼是 Henna（海娜花的祝福） |
+| 场景 | 4 类用途 |
+| 长廊 | 4 封示例邮件 |
+| CTA | 深色金箔横幅 |
+
+实现要点：
+
+- **丝绸背景用 SVG 滤镜**（`feTurbulence` + `feDisplacementMap`）而非 WebGL，
+  不支持的设备也不会白屏，且不需要任何 JS
+- **logo 内联为 base64**，整个页面就一个文件，可离线打开
+- 入场动画三层保险：`IntersectionObserver` + `scroll` 补扫 + 400ms 定时扫描。
+  只靠 IO 的话，快速滚动或锚点跳转会让中间元素整段错过回调而**永远不显示**
+- 全站暖色（米白 / 暖赭 / 金），无蓝紫渐变
+
 ### 🔒 导航权限
 
 | 角色 | 可见页面 |
@@ -340,6 +365,7 @@ cd web    && npm i && npm run dev        # http://localhost:5173 (代理 /api �
 | `11-sidebar-collapsed` | 侧边栏收起 |
 | `12-email-field` | 邮箱后缀输入（单域名 / 多域名收起 / 展开） |
 | `13-nav-permission` | 未登录纯净登录页 + 普通用户收窄导航 |
+| `20-landing-hero` / `21-landing-name` / `22-landing-cta` | 落地页（首屏 / 寓意 / CTA） |
 
 预览图由 `tools/shot-mock.mjs` 用 mock 数据渲染，**非线上实例**。
 登录页的云层由 `tools/render-shader.py` 在 CPU 上复算同一份 GLSL 后合成

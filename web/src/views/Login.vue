@@ -260,7 +260,19 @@ function oauthLogin(key: string) {
           首个注册的账号将自动成为管理员
         </p>
 
-        <p class="mt-8 text-center text-[11px] text-ink-400">
+        <p class="mt-6 text-center">
+          <a
+            href="/landing.html"
+            class="inline-flex items-center gap-1 text-[11px] text-ink-500 transition hover:text-henna-600"
+          >
+            <svg viewBox="0 0 24 24" class="h-3 w-3" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M19 12H5M11 18l-6-6 6-6" stroke-linecap="round" />
+            </svg>
+            返回首页
+          </a>
+        </p>
+
+        <p class="mt-4 text-center text-[11px] text-ink-400">
           Workers · D1 · KV · R2 · 多服务商发信
         </p>
       </div>
