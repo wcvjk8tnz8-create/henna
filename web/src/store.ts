@@ -1,5 +1,5 @@
 import { reactive, watch } from 'vue';
-import { api, clearToken, type Me, type PublicConfig } from './api';
+import { api, clearToken as clearTokenRaw, type Me, type PublicConfig } from './api';
 import { applyTheme, themeFromSettings } from './lib/theme';
 
 interface State {
@@ -47,9 +47,34 @@ watch(
   { immediate: true, deep: true },
 );
 
+/** 清除本地登录态（token + 角色缓存） */
+export function clearToken(): void {
+  clearTokenRaw();
+  try {
+    localStorage.removeItem('henna.role');
+  } catch {
+    /* 忽略 */
+  }
+}
+
+/** 登录成功后调用：写入 token 并缓存角色 */
+export function markRole(role: string): void {
+  try {
+    localStorage.setItem('henna.role', role);
+  } catch {
+    /* 忽略 */
+  }
+}
+
 export async function loadMe(): Promise<Me | null> {
   try {
     store.me = await api.get<Me>('/auth/me');
+    // 缓存角色，路由守卫要用来判断能不能进管理页
+    try {
+      if (store.me?.role) localStorage.setItem('henna.role', store.me.role);
+    } catch {
+      /* 隐私模式下 localStorage 可能不可用 */
+    }
     return store.me;
   } catch {
     store.me = null;

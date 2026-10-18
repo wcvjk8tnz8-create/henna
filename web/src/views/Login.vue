@@ -2,7 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { api, setToken, type Me } from '../api';
-import { loadConfig, loadMe, store, toast } from '../store';
+import { loadConfig, loadMe, markRole, store, toast } from '../store';
 import CloudSky from '../components/CloudSky.vue';
 import CloudShader from '../components/CloudShader.vue';
 import EmailField from '../components/EmailField.vue';
@@ -117,6 +117,7 @@ async function submit() {
         : { email: email.value, password: password.value, code: code.value, turnstileToken: turnstileToken.value };
     const data = await api.post<{ token: string; user: Me }>(path, body);
     setToken(data.token);
+    markRole(data.user.role);
     await loadMe();
     toast(mode.value === 'login' ? '欢迎回来' : '注册成功');
     router.push((route.query.r as string) || '/');

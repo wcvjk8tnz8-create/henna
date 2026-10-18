@@ -194,6 +194,20 @@ export interface MailProvider {
 透明度写法（`bg-henna-500/10`）会编译成 `color-mix(... var(--color-henna-500) ...)`，
 同样运行时解析，一并生效。
 
+### 🔒 导航权限
+
+| 角色 | 可见页面 |
+|---|---|
+| 普通用户 | 收件箱 · 写信 · 账户设置 |
+| 管理员 | 上面三项 + 邮箱地址 · 发信服务商 · 分发规则 · 发信日志 · 分析 · 管理后台 · 系统设置 |
+
+普通用户直接访问管理路径会被路由守卫送回收件箱；真正的权限由后端
+`adminOnly` 中间件保证，前端收窄只是为了不暴露入口。
+
+**登录页不套布局**：`App.vue` 只是根组件（RouterView + 全局 Toast），
+侧边栏 / 移动端顶栏 / 写信按钮都在 `Layout.vue` 里由路由挂载。
+所以未登录时看到的是干净的登录页，不会有侧边栏残留。
+
 ### ✉️ 邮箱后缀输入
 
 登录 / 注册时邮箱框只填用户名，域名由站点配置决定：
@@ -325,6 +339,7 @@ cd web    && npm i && npm run dev        # http://localhost:5173 (代理 /api �
 | `10-mobile` | 移动端 |
 | `11-sidebar-collapsed` | 侧边栏收起 |
 | `12-email-field` | 邮箱后缀输入（单域名 / 多域名收起 / 展开） |
+| `13-nav-permission` | 未登录纯净登录页 + 普通用户收窄导航 |
 
 预览图由 `tools/shot-mock.mjs` 用 mock 数据渲染，**非线上实例**。
 登录页的云层由 `tools/render-shader.py` 在 CPU 上复算同一份 GLSL 后合成
