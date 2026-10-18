@@ -23,6 +23,7 @@ jobs:
       JWT_SECRET: ${{ secrets.JWT_SECRET || vars.JWT_SECRET }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || vars.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || vars.CLOUDFLARE_ACCOUNT_ID }}
+      # 以下三个「可选」：填了就用你已有的资源，留空则自动查找/创建
       D1_DATABASE_ID: ${{ secrets.D1_DATABASE_ID || vars.D1_DATABASE_ID }}
       KV_NAMESPACE_ID: ${{ secrets.KV_NAMESPACE_ID || vars.KV_NAMESPACE_ID }}
       R2_BUCKET_NAME: ${{ secrets.R2_BUCKET_NAME || vars.R2_BUCKET_NAME }}
@@ -36,24 +37,7 @@ jobs:
         with:
           node-version: "22"
 
-      - name: 📦 构建前端
-        working-directory: ./web
-        run: |
-          npm install
-          npm run build
-          rm -rf ../worker/dist
-          cp -r dist ../worker/dist
-          ls -la ../worker/dist
-
-      - name: 📦 安装 Worker 依赖
-        working-directory: ./worker
-        run: |
-          npm install
-          npx wrangler telemetry disable || true
-          npx wrangler --version
-
       - name: 🛠️ 校验环境变量
-        working-directory: ./worker
         run: |
           echo "🔐 开始校验环境变量..."
           if [ -z "$JWT_SECRET" ] || grep -q '[?%#/\\|&]' <<< "$JWT_SECRET"; then
@@ -64,126 +48,74 @@ jobs:
             echo "❌ DOMAIN 必须是 JSON 数组，例如 [\"henna.dev\"]"
             exit 1
           fi
-          if [ -z "$ADMIN" ]; then
-            echo "❌ ADMIN 不能为空"
-            exit 1
-          fi
-          if [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
-            echo "❌ CLOUDFLARE_ACCOUNT_ID 不能为空"
-            exit 1
-          fi
-          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
-            echo "❌ CLOUDFLARE_API_TOKEN 不能为空"
-            exit 1
-          fi
-          if [ -z "$CUSTOM_DOMAIN" ]; then
-            echo "::warning:: CUSTOM_DOMAIN 未设置，将使用 workers.dev 子域"
-          fi
+          [ -z "$ADMIN" ] && { echo "❌ ADMIN 不能为空"; exit 1; }
+          [ -z "$CLOUDFLARE_ACCOUNT_ID" ] && { echo "❌ CLOUDFLARE_ACCOUNT_ID 不能为空"; exit 1; }
+          [ -z "$CLOUDFLARE_API_TOKEN" ] && { echo "❌ CLOUDFLARE_API_TOKEN 不能为空"; exit 1; }
+          [ -z "$CUSTOM_DOMAIN" ] && echo "::warning:: CUSTOM_DOMAIN 未设置，将使用 workers.dev 子域"
           echo "✅ 环境变量校验通过"
+
+      - name: 📦 构建前端
+        working-directory: ./web
+        run: |
+          npm install
+          npm run build
+          rm -rf ../worker/dist
+          cp -r dist ../worker/dist
+
+      - name: 📦 安装 Worker 依赖
+        working-directory: ./worker
+        run: |
+          npm install
+          npx wrangler telemetry disable || true
+
+      # ── 资源全部自动创建/复用；ID 可选，填了就用指定的那个
+      - name: 🗄️ 创建 / 复用 D1 · KV · R2
+        id: provision
+        run: node scripts/provision.mjs
 
       - name: 🛠️ 渲染配置
         working-directory: ./worker
+        env:
+          D1_ID: ${{ steps.provision.outputs.d1_id }}
+          KV_ID: ${{ steps.provision.outputs.kv_id }}
+          R2_BUCKET: ${{ steps.provision.outputs.r2_bucket }}
         run: |
           # 渲染到生成文件：模板 wrangler-action.toml 始终保持不变，重跑不会二次污染
           cp wrangler-action.toml wrangler-deploy.toml
-          CONFIG_FILE="wrangler-deploy.toml"
-          sed -i "s|\${NAME}|${NAME}|g" "$CONFIG_FILE"
-          sed -i "s|\${CLOUDFLARE_ACCOUNT_ID}|${CLOUDFLARE_ACCOUNT_ID}|g" "$CONFIG_FILE"
-          sed -i "s|\${ADMIN}|${ADMIN}|g" "$CONFIG_FILE"
-          sed -i "s|\${JWT_SECRET}|${JWT_SECRET}|g" "$CONFIG_FILE"
+          C=wrangler-deploy.toml
+          sed -i "s|\${NAME}|${NAME}|g"                             "$C"
+          sed -i "s|\${CLOUDFLARE_ACCOUNT_ID}|${CLOUDFLARE_ACCOUNT_ID}|g" "$C"
+          sed -i "s|\${ADMIN}|${ADMIN}|g"                           "$C"
+          sed -i "s|\${JWT_SECRET}|${JWT_SECRET}|g"                 "$C"
+          sed -i "s|\${D1_DATABASE_ID}|${D1_ID}|g"                  "$C"
+          sed -i "s|\${KV_NAMESPACE_ID}|${KV_ID}|g"                 "$C"
           # DOMAIN 是 JSON 数组，去掉包裹引号写成原生数组
-          sed -i "s|\"\${DOMAIN}\"|${DOMAIN}|g" "$CONFIG_FILE"
-          echo "✅ 配置渲染完成（R2 段由下一步处理）"
+          sed -i "s|\"\${DOMAIN}\"|${DOMAIN}|g"                     "$C"
+          # R2 不可用时删除该段，附件功能自动降级
+          if [ -z "$R2_BUCKET" ]; then
+            sed -i '/\[\[r2_buckets\]\]/,/^$/d' "$C"
+            echo "::warning:: 未启用 R2，附件功能降级（只存元信息）"
+          else
+            sed -i "s|\${R2_BUCKET_NAME}|${R2_BUCKET}|g" "$C"
+          fi
+          echo "✅ 渲染完成"
 
-      - name: ⚡ 设置 KV 命名空间
+      - name: 🔍 校验渲染结果
         working-directory: ./worker
         run: |
-          CONFIG_FILE="wrangler-deploy.toml"
-          if [ -n "$KV_NAMESPACE_ID" ]; then
-            sed -i "s|\${KV_NAMESPACE_ID}|${KV_NAMESPACE_ID}|g" "$CONFIG_FILE"
-            echo "✅ 使用环境变量中的 KV"
-            exit 0
+          C=wrangler-deploy.toml
+          # 1. 不能有残留占位符
+          if grep -v '^\s*#' "$C" | grep -n '\${'; then
+            echo "❌ 配置中仍有未替换的占位符"
+            exit 1
           fi
-          echo "🔍 检查 KV 是否已存在..."
-          KV_LIST=$(npx wrangler kv namespace list 2>&1)
-          if [ $? -ne 0 ]; then echo "$KV_LIST"; exit 1; fi
-          KV_ID=$(echo "$KV_LIST" | jq -r ".[] | select(.title == \"$NAME\") | .id")
-          if [ -z "$KV_ID" ]; then
-            echo "⚠️ KV 不存在，开始创建..."
-            npx wrangler kv namespace create "$NAME"
-            KV_LIST=$(npx wrangler kv namespace list)
-            KV_ID=$(echo "$KV_LIST" | jq -r ".[] | select(.title == \"$NAME\") | .id")
-          else
-            echo "✅ KV 已存在"
-          fi
-          sed -i "s|\${KV_NAMESPACE_ID}|${KV_ID}|g" "$CONFIG_FILE"
-          echo "KV_NAMESPACE_ID: $KV_ID"
-
-      - name: 🐬 设置 D1 数据库
-        working-directory: ./worker
-        run: |
-          CONFIG_FILE="wrangler-deploy.toml"
-          if [ -n "$D1_DATABASE_ID" ]; then
-            sed -i "s|\${D1_DATABASE_ID}|${D1_DATABASE_ID}|g" "$CONFIG_FILE"
-            echo "✅ 使用环境变量中的 D1"
-            exit 0
-          fi
-          echo "🔍 检查 D1 是否已存在..."
-          DB_LIST=$(npx wrangler d1 list --json 2>&1)
-          if [ $? -ne 0 ]; then echo "$DB_LIST"; exit 1; fi
-          D1_ID=$(echo "$DB_LIST" | jq -r ".[] | select(.name == \"$NAME-db\") | .uuid")
-          if [ -z "$D1_ID" ]; then
-            echo "⚠️ D1 不存在，开始创建..."
-            npx wrangler d1 create "$NAME-db"
-            DB_LIST=$(npx wrangler d1 list --json)
-            D1_ID=$(echo "$DB_LIST" | jq -r ".[] | select(.name == \"$NAME-db\") | .uuid")
-          else
-            echo "✅ D1 已存在"
-          fi
-          sed -i "s|\${D1_DATABASE_ID}|${D1_ID}|g" "$CONFIG_FILE"
-          echo "D1_DATABASE_ID: $D1_ID"
-
-      - name: 🪣 设置 R2 存储桶（可选，失败自动降级）
-        working-directory: ./worker
-        env:
-          CONFIG_FILE: wrangler-deploy.toml
-        run: |
-          # R2 免费额度需绑卡，部分账户不可用。
-          # 这里「尽力而为」：能用就用，用不了就删掉配置段，附件功能自动降级，不影响其余功能。
-          disable_r2() {
-            sed -i '/\[\[r2_buckets\]\]/,/^$/d' "$CONFIG_FILE"
-            echo "::warning:: 未启用 R2，附件功能将降级（只保存附件元信息，不保存文件内容）"
-          }
-          if [ -z "$R2_BUCKET_NAME" ]; then
-            echo "· 未指定 R2_BUCKET_NAME，尝试自动创建默认桶"
-            R2_BUCKET_NAME="${NAME}-r2"
-          fi
-          echo "🔍 检查 R2 桶 $R2_BUCKET_NAME ..."
-          set +e
-          LIST=$(npx wrangler r2 bucket list --json 2>&1)
-          set -e
-          if ! echo "$LIST" | jq -e 'type == "array"' >/dev/null 2>&1; then
-            echo "· R2 不可用（账户未开通/无权限）：$LIST"
-            disable_r2
-            exit 0
-          fi
-          if echo "$LIST" | jq -e ".[] | select(.name == \"$R2_BUCKET_NAME\")" >/dev/null; then
-            echo "✅ R2 桶已存在"
-          else
-            echo "⚠️ R2 桶不存在，开始创建..."
-            set +e
-            CREATE=$(npx wrangler r2 bucket create "$R2_BUCKET_NAME" 2>&1)
-            CODE=$?
-            set -e
-            if [ $CODE -ne 0 ]; then
-              echo "· 创建失败：$CREATE"
-              disable_r2
-              exit 0
-            fi
-            echo "✅ R2 桶创建成功"
-          fi
-          sed -i "s|\${R2_BUCKET_NAME}|${R2_BUCKET_NAME}|g" "$CONFIG_FILE"
-          echo "R2_BUCKET_NAME: $R2_BUCKET_NAME"
+          # 2. D1 / KV 的 id 必须非空（空串会让 wrangler 报 id: should be non-empty string）
+          if grep -qE '^\s*database_id\s*=\s*""'  "$C"; then echo "❌ D1 database_id 为空"; exit 1; fi
+          if grep -qE '^\s*^id\s*=\s*""'          "$C"; then echo "❌ KV id 为空"; exit 1; fi
+          # 3. MAIL_DOMAINS 必须是数组形式
+          if ! grep -qE '^MAIL_DOMAINS\s*=\s*\['  "$C"; then echo "❌ MAIL_DOMAINS 不是数组"; exit 1; fi
+          echo "✅ 渲染结果校验通过"
+          grep -E '^(name|database_id|bucket_name)|^\s*id\s*=|MAIL_DOMAINS' "$C" || true
 
       - name: 🚀 部署 Worker
         id: deploy
@@ -192,14 +124,11 @@ jobs:
           echo "🚀 开始部署..."
           set +e
           npx wrangler deploy -c wrangler-deploy.toml 2>&1 | tee deploy.log
-          DEPLOY_EXIT_CODE=${PIPESTATUS[0]}
+          CODE=${PIPESTATUS[0]}
           set -e
-          if [ $DEPLOY_EXIT_CODE -ne 0 ]; then
-            echo "❌ 部署失败"
-            exit 1
-          fi
+          if [ $CODE -ne 0 ]; then echo "❌ 部署失败"; exit 1; fi
           WORKER_URL=$(grep -o "https://[a-zA-Z0-9.-]*\.workers\.dev" deploy.log | head -1 || echo "")
-          if [ -n "$WORKER_URL" ]; then echo "::add-mask::$WORKER_URL"; fi
+          [ -n "$WORKER_URL" ] && echo "::add-mask::$WORKER_URL"
           echo "worker_url=$WORKER_URL" >> $GITHUB_OUTPUT
           echo "✅ 部署完成：$WORKER_URL"
 
@@ -214,19 +143,19 @@ jobs:
             exit 1
           fi
           for i in 1 2 3 4 5; do
-            HTTP_CODE=$(curl -sL -w "%{http_code}" -o response.txt "$WORKER_URL/api/init/${JWT_SECRET}" || echo 000)
-            RESPONSE_BODY=$(cat response.txt 2>/dev/null || echo "")
-            echo "尝试 $i -> HTTP $HTTP_CODE / $RESPONSE_BODY"
-            if [ "$RESPONSE_BODY" = "success" ]; then
+            BODY=$(curl -sL "$WORKER_URL/api/init/${JWT_SECRET}" || echo "")
+            echo "尝试 $i -> $BODY"
+            if [ "$BODY" = "success" ]; then
               echo "✅ 数据库初始化完成"
               echo "### 部署结果" >> "$GITHUB_STEP_SUMMARY"
               echo "- 访问地址：$WORKER_URL" >> "$GITHUB_STEP_SUMMARY"
+              echo "- 附件存储：${{ steps.provision.outputs.r2_enabled == 'true' && '已启用 R2' || '未启用（功能降级）' }}" >> "$GITHUB_STEP_SUMMARY"
               echo "- 下一步：Cloudflare 控制台 → 域名 → Email → Email Routing → Routing rules → Send to Worker → $NAME" >> "$GITHUB_STEP_SUMMARY"
               exit 0
             fi
             sleep 12
           done
-          echo "❌ 初始化失败，最后一次响应：$RESPONSE_BODY"
+          echo "❌ 初始化失败，最后响应：$BODY"
           exit 1
 
       - name: 🗑️ 清理运行记录
