@@ -1,5 +1,6 @@
-import { reactive } from 'vue';
+import { reactive, watch } from 'vue';
 import { api, clearToken, type Me, type PublicConfig } from './api';
+import { applyTheme, themeFromSettings } from './lib/theme';
 
 interface State {
   me: Me | null;
@@ -35,6 +36,16 @@ export async function loadConfig(): Promise<void> {
     };
   }
 }
+
+/**
+ * 配置变化即换肤。首次进入时也会触发一次，
+ * 所以登录页在未登录状态下同样是站点设定的主题色。
+ */
+watch(
+  () => store.config?.settings,
+  (st) => applyTheme(themeFromSettings(st as Record<string, string> | undefined)),
+  { immediate: true, deep: true },
+);
 
 export async function loadMe(): Promise<Me | null> {
   try {

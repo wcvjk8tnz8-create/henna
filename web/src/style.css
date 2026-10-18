@@ -1,24 +1,58 @@
 @import 'tailwindcss';
 
+/**
+ * 运行时主题变量。
+ *
+ * 关键点：Tailwind v4 的 @theme 是编译期的，但它的值可以是 var()，
+ * 生成的 utility 会是 `background-color: var(--color-henna-500)`，
+ * 而 --color-henna-500 又指向 --brand-500 —— CSS 变量在运行时解析，
+ * 所以 JS 改写 :root 上的 --brand-500 就能实时换肤，无需重新构建。
+ *
+ * 透明度写法（如 bg-henna-500/10）会编译成
+ * color-mix(in oklab, var(--color-henna-500) 10%, transparent)，
+ * 同样是运行时解析，一并生效。
+ */
+:root {
+  --brand-50: #fdf4f0;
+  --brand-100: #f9e4da;
+  --brand-200: #f0c4ae;
+  --brand-300: #e5a288;
+  --brand-400: #d1714f;
+  --brand-500: #b4462f;
+  --brand-600: #97381f;
+  --brand-700: #7a2c18;
+
+  --accent-400: #d99256;
+  --accent-500: #c97b3c;
+  --accent-600: #a9622b;
+
+  --surface-50: #faf6f1;
+  --surface-100: #f3ece4;
+  --surface-200: #e7dcd0;
+  --surface-300: #d3c4b4;
+
+  --ui-radius: 14px;
+}
+
 /* ── Henna 设计令牌：暖赭 / 陶土 / 墨底，无冷色渐变 ───────────────── */
 @theme {
-  --color-sand-50: #faf6f1;
-  --color-sand-100: #f3ece4;
-  --color-sand-200: #e7dcd0;
-  --color-sand-300: #d3c4b4;
+  --color-sand-50: var(--surface-50); /* #faf6f1 */
+  --color-sand-100: var(--surface-100); /* #f3ece4 */
+  --color-sand-200: var(--surface-200); /* #e7dcd0 */
+  --color-sand-300: var(--surface-300); /* #d3c4b4 */
 
-  --color-henna-50: #fdf4f0;
-  --color-henna-100: #f9e4da;
-  --color-henna-200: #f0c4ae;
-  --color-henna-300: #e5a288;
-  --color-henna-400: #d1714f;
-  --color-henna-500: #b4462f;
-  --color-henna-600: #97381f;
-  --color-henna-700: #7a2c18;
+  --color-henna-50: var(--brand-50); /* #fdf4f0 */
+  --color-henna-100: var(--brand-100); /* #f9e4da */
+  --color-henna-200: var(--brand-200); /* #f0c4ae */
+  --color-henna-300: var(--brand-300); /* #e5a288 */
+  --color-henna-400: var(--brand-400); /* #d1714f */
+  --color-henna-500: var(--brand-500); /* #b4462f */
+  --color-henna-600: var(--brand-600); /* #97381f */
+  --color-henna-700: var(--brand-700); /* #7a2c18 */
 
-  --color-clay-400: #d99256;
-  --color-clay-500: #c97b3c;
-  --color-clay-600: #a9622b;
+  --color-clay-400: var(--accent-400); /* #d99256 */
+  --color-clay-500: var(--accent-500); /* #c97b3c */
+  --color-clay-600: var(--accent-600); /* #a9622b */
 
   --color-ink-500: #57534e;
   --color-ink-700: #292524;
@@ -30,7 +64,7 @@
 
   --font-sans: 'Inter', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
 
-  --radius-card: 14px;
+  --radius-card: var(--ui-radius); /* 14px */
 }
 
 @layer base {
@@ -82,8 +116,10 @@
   .table {
     @apply tbl;
   }
+  /* 主色上的文字用 --brand-on：主色偏亮时自动转深色字，保证对比度 */
   .btn-primary {
-    @apply btn bg-henna-500 text-white hover:bg-henna-600 active:bg-henna-700;
+    @apply btn bg-henna-500 hover:bg-henna-600 active:bg-henna-700;
+    color: var(--brand-on, #fff);
   }
   .btn-ghost {
     @apply btn border border-sand-200 bg-white text-ink-700 hover:bg-sand-100;

@@ -80,7 +80,7 @@ const paths: Record<string, string> = {
       <!-- 移动端顶栏 -->
       <header class="flex items-center justify-between border-b border-sand-200 bg-white px-4 py-3 md:hidden">
         <div class="flex items-center gap-2">
-          <div class="grid h-8 w-8 place-items-center rounded-lg bg-henna-500 text-white">
+          <div class="grid h-8 w-8 place-items-center rounded-lg bg-henna-500" style="color: var(--brand-on, #fff)">
             <svg viewBox="0 0 24 24" class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M3 7h18v10H3z" />
               <path d="M3 7l9 6 9-6" />
@@ -113,7 +113,8 @@ const paths: Record<string, string> = {
     <div
       v-if="store.toast"
       class="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-lg px-4 py-2.5 text-sm text-white shadow-lg"
-      :class="store.toast.kind === 'ok' ? 'bg-jade-600' : 'bg-henna-600'"
+      :class="store.toast.kind === 'ok' ? 'bg-jade-600 text-white' : 'bg-henna-600'"
+      :style="store.toast.kind === 'ok' ? {} : { color: 'var(--brand-on, #fff)' }"
     >
       {{ store.toast.text }}
     </div>

@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { api, type SettingsMap, type StorageStatus } from '../api';
 import { store, toast } from '../store';
 import Toggle from '../components/Toggle.vue';
 import Section from '../components/Section.vue';
+import { THEME_PRESETS, applyTheme, themeFromSettings, type ThemeSpec } from '../lib/theme';
 
 const s = ref<SettingsMap>({});
 const loading = ref(true);
@@ -36,10 +37,39 @@ const aiEnabled = flag('ai_enabled');
 
 const isAdmin = computed(() => store.me?.role === 'admin');
 
+/* ── 主题：改取色器即时预览，保存后才落库 ───────────────── */
+const theme = ref<ThemeSpec>({ primary: '#b4462f', accent: '#c97b3c', surface: '#faf6f1', radius: 14 });
+const presets = THEME_PRESETS;
+
+watch(
+  theme,
+  (t) => applyTheme(t),
+  { deep: true },
+);
+
+const activePreset = computed(() =>
+  presets.find(
+    (p) =>
+      p.spec.primary.toLowerCase() === theme.value.primary.toLowerCase() &&
+      p.spec.accent.toLowerCase() === theme.value.accent.toLowerCase() &&
+      p.spec.surface.toLowerCase() === theme.value.surface.toLowerCase(),
+  )?.key ?? '',
+);
+
+function usePreset(p: (typeof presets)[number]) {
+  theme.value = { ...p.spec };
+}
+
+/** 从已保存的设置同步一次（进入页面 / 保存成功后） */
+function syncTheme() {
+  theme.value = themeFromSettings(s.value);
+}
+
 async function load() {
   loading.value = true;
   try {
     s.value = await api.get<SettingsMap>('/system/settings');
+    syncTheme();
     if (isAdmin.value) {
       storage.value = await api.get<StorageStatus>('/system/storage').catch(() => null);
     }
@@ -54,10 +84,18 @@ async function save(keys?: string[]) {
   saving.value = true;
   try {
     const patch: SettingsMap = {};
+    // 主题单独一份：只有整体保存或显式要求时才带上
+    if (!keys || keys.includes('theme')) {
+      patch.theme_primary = theme.value.primary;
+      patch.theme_accent = theme.value.accent;
+      patch.theme_surface = theme.value.surface;
+      patch.theme_radius = String(theme.value.radius);
+    }
     const src = keys ?? Object.keys(s.value);
     for (const k of src) patch[k] = s.value[k];
     const r = await api.put<{ settings: SettingsMap }>('/system/settings', patch);
     s.value = r.settings;
+    syncTheme();
     toast('已保存', 'ok');
     if (keys?.some((k) => k.startsWith('storage_') || k.startsWith('s3_'))) {
       storage.value = await api.get<StorageStatus>('/system/storage').catch(() => null);
@@ -74,6 +112,7 @@ async function resetAll() {
   try {
     const r = await api.post<{ settings: SettingsMap }>('/system/settings/reset');
     s.value = r.settings;
+    syncTheme();
     toast('已恢复默认', 'ok');
   } catch (e) {
     toast((e as Error).message, 'err');
@@ -135,6 +174,71 @@ onMounted(load);
     <p v-if="loading" class="py-10 text-center text-sm text-ink-500">加载中…</p>
 
     <div v-else class="space-y-4">
+      <!-- ── 主题 ─────────────────────────────────── -->
+      <Section title="主题" desc="改动即时预览，点「保存全部」后写入">
+        <div class="mb-4 flex flex-wrap gap-2">
+          <button
+            v-for="p in presets"
+            :key="p.key"
+            class="rounded-lg border px-3 py-1.5 text-xs font-medium transition"
+            :class="activePreset === p.key ? 'border-henna-500 bg-henna-50 text-henna-600' : 'border-sand-200 text-ink-500 hover:bg-sand-100'"
+            @click="usePreset(p)"
+          >
+            {{ p.name }}
+          </button>
+        </div>
+
+        <div class="grid gap-3 md:grid-cols-3">
+          <div>
+            <label class="label">主色</label>
+            <div class="flex items-center gap-2">
+              <input v-model="theme.primary" type="color" class="h-8 w-8 shrink-0 rounded border border-sand-300" />
+              <input v-model="theme.primary" class="input" placeholder="#b4462f" />
+            </div>
+          </div>
+          <div>
+            <label class="label">点缀色</label>
+            <div class="flex items-center gap-2">
+              <input v-model="theme.accent" type="color" class="h-8 w-8 shrink-0 rounded border border-sand-300" />
+              <input v-model="theme.accent" class="input" placeholder="#c97b3c" />
+            </div>
+          </div>
+          <div>
+            <label class="label">页面底色</label>
+            <div class="flex items-center gap-2">
+              <input v-model="theme.surface" type="color" class="h-8 w-8 shrink-0 rounded border border-sand-300" />
+              <input v-model="theme.surface" class="input" placeholder="#faf6f1" />
+            </div>
+          </div>
+        </div>
+
+        <div class="mt-3">
+          <label class="label">卡片圆角 · {{ theme.radius }}px</label>
+          <input v-model.number="theme.radius" type="range" min="0" max="28" step="2" class="w-full accent-henna-500" />
+        </div>
+
+        <!-- 预览 -->
+        <div class="mt-4 rounded-lg border border-sand-200 p-4">
+          <p class="mb-2.5 text-[11px] text-ink-500">预览</p>
+          <div class="flex flex-wrap items-center gap-2">
+            <button class="btn-primary !px-3 !py-1.5 text-xs">主按钮</button>
+            <button class="btn-ghost !px-3 !py-1.5 text-xs">次级</button>
+            <button class="btn-danger !px-3 !py-1.5 text-xs">危险</button>
+            <span class="chip-ok">正常</span>
+            <span class="chip-warn">警告</span>
+            <span class="chip-err">错误</span>
+          </div>
+          <div class="mt-3 flex gap-2">
+            <input class="input !py-1.5 text-xs" placeholder="输入框" readonly />
+            <div class="card flex-1 px-3 py-2 text-xs text-ink-500">卡片 · 圆角随设置变化</div>
+          </div>
+        </div>
+
+        <p class="mt-2 text-[11px] leading-relaxed text-ink-500">
+          色阶由主色自动推导，主色过亮时按钮文字会自动转为深色以保证可读。
+        </p>
+      </Section>
+
       <!-- ── 基本设置 ─────────────────────────────── -->
       <Section title="基本设置" desc="控制注册与邮箱地址的分配方式">
         <div class="mb-3">

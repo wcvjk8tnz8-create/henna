@@ -8,9 +8,24 @@
 
 参考设计：[Cloud Mail](https://github.com/maillab/cloud-mail) / [doc.skymail.ink](https://doc.skymail.ink)。本项目为独立实现，全栈 TypeScript。
 
-![登录页 · 云层背景](docs/preview/09-login-shader.png)
+![登录页 · 云层背景](docs/preview/09-login.png)
 
-![收件箱](docs/preview/01-inbox.png)
+<details>
+<summary>更多界面预览（点击展开）</summary>
+
+| 收件箱 | 写信 |
+|---|---|
+| ![收件箱](docs/preview/01-inbox.png) | ![写信](docs/preview/02-compose.png) |
+| 邮箱地址 | 发信服务商 |
+| ![邮箱地址](docs/preview/03-addresses.png) | ![发信服务商](docs/preview/04-providers.png) |
+| 分发规则 | 分析 |
+| ![分发规则](docs/preview/05-rules.png) | ![分析](docs/preview/06-analytics.png) |
+| 管理后台 | 系统设置 |
+| ![管理后台](docs/preview/07-admin.png) | ![系统设置](docs/preview/08-system.png) |
+
+![移动端](docs/preview/10-mobile.png)
+
+</details>
 
 ---
 
@@ -22,7 +37,7 @@
 | Worker 打包（esbuild bundle） | 通过，235 KB |
 | 前端生产构建（Vite + Tailwind v4） | 通过，CSS 28 KB / JS 97 KB |
 | 冒烟测试（12 项）+ 域名解析回归（11 项） | 23 passed, 0 failed |
-| 界面预览截图 | 8 张，0 个蓝紫像素 |
+| 界面预览截图 | 10 张（含移动端），UI 区 0 个蓝紫像素 |
 
 冒烟测试覆盖：口令哈希与校验、JWT 签发/验签/过期拒绝、服务商优先级调度、故障自动转移、指定通道（pinned）、全部失败与无通道的兜底报错。
 
@@ -155,6 +170,25 @@ export interface MailProvider {
 | `KV_NAMESPACE_ID` | 已有 KV 则填，留空自动创建 | |
 | `R2_BUCKET_NAME` | 附件桶名，**留空自动创建** `henna-mail-r2`；账户没开通 R2 则自动跳过（详见上方） | |
 
+### 🎨 站点主题（运行时换肤）
+
+在「系统设置 → 主题」里改，无需重新构建、无需重新部署。
+
+| 项 | 说明 |
+|---|---|
+| 主色 | 自动推导 50~700 色阶；过亮时按钮文字自动转深色保证对比度 |
+| 点缀色 | 警告 / 提示类标签 |
+| 页面底色 | 推导 sand 50~300，页面底色始终最浅 |
+| 卡片圆角 | 0~28px |
+
+六个预设：暖赭（默认）/ 陶土 / 墨黑 / 森绿 / 酒红 / 琥珀。
+
+原理：Tailwind v4 的 `@theme` 虽是编译期的，但它的值可以是 `var()`。
+`--color-henna-500` 指向 `--brand-500`，而 CSS 变量在运行时解析，
+所以 JS 改写 `:root` 上的 `--brand-500` 就能实时换肤。
+透明度写法（`bg-henna-500/10`）会编译成 `color-mix(... var(--color-henna-500) ...)`，
+同样运行时解析，一并生效。
+
 ### 🎨 登录页与品牌
 
 未登录时是**左右分栏**：左半边背景，右半边登录面板。
@@ -256,18 +290,24 @@ cd web    && npm i && npm run dev        # http://localhost:5173 (代理 /api �
 
 ## 七、界面预览
 
-| 页面 | 预览 |
-|---|---|
-| 收件箱 | ![](docs/preview/01-inbox.png) |
-| 写信 · 分发 | ![](docs/preview/02-compose.png) |
-| 发信服务商 | ![](docs/preview/03-providers.png) |
-| 邮箱地址 | ![](docs/preview/04-addresses.png) |
-| 分发规则 | ![](docs/preview/05-rules.png) |
-| 管理后台 | ![](docs/preview/06-admin.png) |
-| 登录 | ![](docs/preview/07-login.png) |
-| 移动端 | ![](docs/preview/08-mobile.png) |
+顶部已列出全部页面。编号对应关系：
 
-预览图为本地 mock 数据渲染（脚本：`scripts/preview-server.mjs`），非线上实例。
+| 编号 | 页面 |
+|---|---|
+| `01-inbox` | 收件箱 |
+| `02-compose` | 写信 · 分发 |
+| `03-addresses` | 邮箱地址 |
+| `04-providers` | 发信服务商 |
+| `05-rules` | 分发规则 |
+| `06-analytics` | 分析 |
+| `07-admin` | 管理后台 |
+| `08-system` | 系统设置 |
+| `09-login` | 登录页（云层背景） |
+| `10-mobile` | 移动端 |
+
+预览图由 `tools/shot-mock.mjs` 用 mock 数据渲染，**非线上实例**。
+登录页的云层由 `tools/render-shader.py` 在 CPU 上复算同一份 GLSL 后合成
+（沙盒内的 Chromium 没有可用的 WebGL）。
 
 ## 八、开放 API
 

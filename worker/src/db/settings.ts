@@ -29,6 +29,10 @@ export const PUBLIC_KEYS = [
   'login_bg_mode',
   'login_bg_api',
   'login_opacity',
+  'theme_primary',
+  'theme_accent',
+  'theme_surface',
+  'theme_radius',
   'login_shader_sky_top',
   'login_shader_sky_bottom',
   'login_shader_cloud',
@@ -61,6 +65,11 @@ export const DEFAULT_SETTINGS: Record<string, string> = {
   login_bg: '',
   login_bg_api: '',
   login_opacity: '0.92',
+  // ── 站点主题（运行时换肤）
+  theme_primary: '#b4462f',
+  theme_accent: '#c97b3c',
+  theme_surface: '#faf6f1',
+  theme_radius: '14',
   // ── 内置云层（WebGL shader）配色与动态
   login_shader_sky_top: '#3876ba',
   login_shader_sky_bottom: '#8cbfe8',
