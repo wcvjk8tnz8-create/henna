@@ -25,6 +25,13 @@ interface MessageRow {
   created_at: number;
 }
 
+/**
+ * 列表。
+ *
+ * 默认**只看自己的** —— 管理员也一样。之前管理员会看到全站所有人的信，
+ * 这既不符合「收件箱」的直觉，也让管理员自己找不到自己的信。
+ * 要看全部走 scope=all（仅管理员，且只在单独的「全部收件箱」页用）。
+ */
 message.get('/', authRequired, async (c) => {
   const user = c.get('user');
   const boxRaw = c.req.query('box') ?? 'in';
@@ -33,23 +40,28 @@ message.get('/', authRequired, async (c) => {
   const limit = clamp(Number(c.req.query('limit') ?? 50), 1, 200);
   const offset = clamp(Number(c.req.query('offset') ?? 0), 0, 100000);
 
-  let sql = 'SELECT id, user_id, address_id, direction, from_addr, from_name, to_addr, subject, is_read, is_star, size, created_at FROM mail_message WHERE direction = ?';
+  // scope=all 仅管理员可用；普通用户传了也无效（按自己的返回）
+  const all = c.req.query('scope') === 'all' && user.role === 'admin';
+
+  let sql = all
+    ? 'SELECT m.id, m.user_id, m.address_id, m.direction, m.from_addr, m.from_name, m.to_addr, m.subject, m.is_read, m.is_star, m.size, m.created_at, u.email AS owner FROM mail_message m LEFT JOIN user u ON u.id = m.user_id WHERE m.direction = ?'
+    : 'SELECT id, user_id, address_id, direction, from_addr, from_name, to_addr, subject, is_read, is_star, size, created_at FROM mail_message WHERE direction = ? AND user_id = ?';
   const args: unknown[] = [box];
-  if (user.role !== 'admin') {
-    sql += ' AND user_id = ?';
-    args.push(user.id);
-  }
-  if (c.req.query('star') === '1') {
-    sql += ' AND is_star = 1';
-  }
+  if (!all) args.push(user.id);
+
+  if (c.req.query('star') === '1') sql += all ? ' AND m.is_star = 1' : ' AND is_star = 1';
   if (q) {
-    sql += ' AND (subject LIKE ? OR from_addr LIKE ? OR to_addr LIKE ?)';
+    sql += all
+      ? ' AND (m.subject LIKE ? OR m.from_addr LIKE ? OR m.to_addr LIKE ?)'
+      : ' AND (subject LIKE ? OR from_addr LIKE ? OR to_addr LIKE ?)';
     args.push(`%${q}%`, `%${q}%`, `%${q}%`);
   }
-  sql += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
+  sql += all
+    ? ' ORDER BY m.created_at DESC LIMIT ? OFFSET ?'
+    : ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
   args.push(limit, offset);
 
-  const rows = await qAll<MessageRow>(c.env.DB, sql, ...args);
+  const rows = await qAll<MessageRow & { owner?: string }>(c.env.DB, sql, ...args);
   return c.json(ok(rows));
 });
 
@@ -70,14 +82,31 @@ message.get('/:id', authRequired, async (c) => {
   return c.json(ok({ ...row, attachments: atts }));
 });
 
+type MsgCtx = {
+  get: (k: 'user') => { id: number; role: string };
+  env: Env;
+  req: { json: () => Promise<unknown> };
+};
+
+/** 取邮件并校验归属：不是自己的且不是管理员 → 403 */
+async function assertOwn(c: MsgCtx, id: number): Promise<MessageRow> {
+  const user = c.get('user');
+  const row = await qOne<MessageRow>(c.env.DB, 'SELECT * FROM mail_message WHERE id = ?', id);
+  if (!row) throw new HttpError('邮件不存在', 404);
+  if (user.role !== 'admin' && row.user_id !== user.id) throw new HttpError('无权操作', 403);
+  return row;
+}
+
 message.post('/:id/read', authRequired, async (c) => {
   const id = Number(c.req.param('id'));
+  await assertOwn(c, id);
   await exec(c.env.DB, 'UPDATE mail_message SET is_read = 1 WHERE id = ?', id);
   return c.json(ok({ updated: true }));
 });
 
 message.post('/:id/star', authRequired, async (c) => {
   const id = Number(c.req.param('id'));
+  await assertOwn(c, id);
   const { star } = (await c.req.json().catch(() => ({}))) as { star?: number };
   await exec(c.env.DB, 'UPDATE mail_message SET is_star = ? WHERE id = ?', star ? 1 : 0, id);
   return c.json(ok({ updated: true }));

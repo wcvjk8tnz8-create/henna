@@ -26,6 +26,7 @@ const routes = [
     component: () => import('./views/Layout.vue'),
     children: [
       { path: '', name: 'inbox', component: () => import('./views/Inbox.vue') },
+      { path: 'all', name: 'all-inbox', component: () => import('./views/AllInbox.vue'), meta: { admin: true } },
       { path: 'compose', name: 'compose', component: () => import('./views/Compose.vue') },
       { path: 'addresses', name: 'addresses', component: () => import('./views/Addresses.vue'), meta: { admin: true } },
       { path: 'providers', name: 'providers', component: () => import('./views/Providers.vue'), meta: { admin: true } },

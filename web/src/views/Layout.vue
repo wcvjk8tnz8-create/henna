@@ -27,6 +27,7 @@ const navs = computed(() => [
   { to: '/compose', label: '写信', icon: 'send' },
   ...(isAdmin.value
     ? [
+        { to: '/all', label: '全部收件箱', icon: 'users' },
         { to: '/addresses', label: '邮箱地址', icon: 'at' },
         { to: '/providers', label: '发信服务商', icon: 'plug' },
         { to: '/rules', label: '分发规则', icon: 'route' },
@@ -64,6 +65,7 @@ const paths: Record<string, string> = {
   gear: 'M12 15a3 3 0 100-6 3 3 0 000 6zm8-3a8 8 0 00-.2-1.7l1.7-1.3-1.7-3-2 .8a8 8 0 00-2.9-1.7L14.5 3h-3.4l-.4 2.1a8 8 0 00-2.9 1.7l-2-.8-1.7 3 1.7 1.3A8 8 0 004 12c0 .6.1 1.2.2 1.7l-1.7 1.3 1.7 3 2-.8a8 8 0 002.9 1.7l.4 2.1h3.4l.4-2.1a8 8 0 002.9-1.7l2 .8 1.7-3-1.7-1.3c.1-.5.2-1.1.2-1.7z',
   chart: 'M4 20V10M10 20V4M16 20v-7M22 20H2',
   sliders: 'M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0M16 4v4M10 10v4M20 16v4',
+  users: 'M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75',
   collapse: 'M15 6l-6 6 6 6',
   expand: 'M9 6l6 6-6 6',
 };

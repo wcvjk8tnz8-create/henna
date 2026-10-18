@@ -127,6 +127,9 @@
   .btn-danger {
     @apply btn border border-henna-200 bg-white text-henna-600 hover:bg-henna-50;
   }
+  .chip-plain {
+    @apply chip bg-sand-100 text-ink-500;
+  }
   .chip-ok {
     @apply chip bg-jade-500/10 text-jade-600;
   }

@@ -78,6 +78,8 @@ export interface MailItem {
   is_star: number;
   size: number;
   created_at: number;
+  /** 仅 scope=all（管理员）时返回，标明这封邮件属于谁 */
+  owner?: string;
 }
 export interface MailDetail extends MailItem {
   text_body: string | null;
