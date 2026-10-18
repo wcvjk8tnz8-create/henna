@@ -96,9 +96,11 @@ WORKER_URL="${WORKER_URL:-$(grep -o 'https://[a-zA-Z0-9.-]*\.workers\.dev' deplo
 [[ -z "$WORKER_URL" ]] && { echo "✗ 拿不到访问地址，请设置 CUSTOM_DOMAIN" >&2; exit 1; }
 
 echo "▶ [7/7] 初始化数据库"
-for i in 1 2 3 4 5; do
+for i in 1 2 3 4 5 6 7 8; do
   sleep 12
-  BODY=$(curl -sL "$WORKER_URL/api/init/${JWT_SECRET}" || echo "")
+  # --ipv4 规避 IPv6 解析失败导致的 HTTP 000
+  BODY=$(curl -4 -sL --max-time 20 "$WORKER_URL/api/init/${JWT_SECRET}" || echo "")
+  echo "   · 第 $i 次 -> ${BODY:-（无响应）}"
   if [[ "$BODY" == "success" ]]; then
     echo
     echo "────────────────────────────────────────────"
@@ -111,5 +113,7 @@ for i in 1 2 3 4 5; do
   fi
   echo "· 第 $i 次初始化未成功，响应：$BODY"
 done
-echo "✗ 初始化失败，请手动访问 $WORKER_URL/api/init/$JWT_SECRET" >&2
-exit 1
+echo "! Worker 已部署，但自动初始化未成功（地址可能还没生效）" >&2
+echo "  请在浏览器打开下面地址手动完成建表（一次即可）：" >&2
+echo "    $WORKER_URL/api/init/$JWT_SECRET" >&2
+exit 0

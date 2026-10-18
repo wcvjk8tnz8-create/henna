@@ -202,6 +202,8 @@ export DOMAIN='["your.domain"]'      # 必须是 JSON 数组
 2. Routing rules 中把目标地址 / Catch-all → **Send to Worker** → 选 `henna-mail`。
 3. 访问 `https://<你的域名>/api/init/<JWT_SECRET>` 完成建表（脚本与 Actions 已自动调用，也可手动兜底）。
    用本文的示例值就是：`https://<你的域名>/api/init/web3hennamail`
+   若 CI 日志出现 `::warning:: 自动初始化未成功`，多半是 workers.dev 主机名 DNS 还没生效——
+   Worker 其实已经部署好了，等 2~3 分钟手动打开上面那个地址即可，不需要重新部署。
 
 ## 六、本地开发
 
