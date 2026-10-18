@@ -134,17 +134,23 @@ export interface MailProvider {
 
 工作流已就位：`.github/workflows/deploy.yml`，默认分支推送即触发，无需任何手动操作。
 
-在仓库 `Settings → Secrets and variables → Actions` 配置：
+在仓库 `Settings → Secrets and variables → Actions` 配置（**Secrets 或 Variables 均可**，工作流两者都读）：
 
-| Secret | 说明 |
-|---|---|
-| `CLOUDFLARE_API_TOKEN` | 含 Workers / D1 / KV / R2 编辑权限 |
-| `CLOUDFLARE_ACCOUNT_ID` | 账户 ID |
-| `JWT_SECRET` | 会话签名密钥，**随便打一个别人猜不到的字符串即可**（见下方说明） |
-| `ADMIN_EMAIL` | 首个管理员邮箱，如 `admin@your.domain` |
-| `MAIL_DOMAINS` | JSON 数组，如 `["your.domain"]` |
+| 名称 | 说明 | 必填 |
+|---|---|---|
+| `CLOUDFLARE_API_TOKEN` | Cloudflare API 令牌 | ✓ |
+| `CLOUDFLARE_ACCOUNT_ID` | 账户 ID | ✓ |
+| `ADMIN` | 管理员邮箱，如 `admin@your.domain` | ✓ |
+| `DOMAIN` | **必须是 JSON 数组**，如 `["your.domain"]` | ✓ |
+| `JWT_SECRET` | 会话签名密钥，**随便打一个别人猜不到的字符串即可**（见下方说明） | ✓ |
+| `NAME` | Worker 名称，默认 `henna-mail` | |
+| `CUSTOM_DOMAIN` | 自定义域名，如 `mail.your.domain` | |
+| `D1_DATABASE_ID` | 已有 D1 则填，留空自动创建 | |
+| `KV_NAMESPACE_ID` | 已有 KV 则填，留空自动创建 | |
+| `R2_BUCKET_NAME` | 附件桶名，留空则不启用附件功能 | |
 
-推送到 `main` 即自动：建资源 → 迁库 → 部署前端 + Worker。也支持 Actions 面板 `Run workflow` 手动触发。
+> `DOMAIN` 这一项最容易填错。必须是 **JSON 数组格式** `["your.domain"]`，
+> 写成 `your.domain` 或 `[your.domain]` 都会在部署前的校验步骤直接报错退出——这是刻意的，早失败比部署完才发现问题好。
 
 ### 方式二 · 一键 CLI 脚本（本地 / 服务器）
 
@@ -152,9 +158,9 @@ export interface MailProvider {
 export CLOUDFLARE_API_TOKEN=xxx
 export CLOUDFLARE_ACCOUNT_ID=xxx
 export JWT_SECRET=web3hennamail      # 随便打，别让别人知道就行
-export ADMIN_EMAIL=admin@your.domain
-export MAIL_DOMAINS='["your.domain"]'
-./scripts/deploy.sh            # 自动建资源 → 迁库 → 构建 → 部署
+export ADMIN=admin@your.domain
+export DOMAIN='["your.domain"]'      # 必须是 JSON 数组
+./scripts/deploy.sh            # 校验 → 构建 → 建资源 → 部署 → 初始化
 ```
 
 脚本幂等：资源已存在则复用，重复执行安全。

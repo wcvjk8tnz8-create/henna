@@ -42,15 +42,12 @@ system.get('/init/:secret', async (c) => {
     );
   }
 
-  const adminExists = await qOne<{ n: number }>(c.env.DB, 'SELECT COUNT(*) AS n FROM user');
-  return c.json(
-    ok({
-      success: true,
-      providers: await qAll(c.env.DB, 'SELECT id, name, kind FROM mail_provider'),
-      hasAdmin: (adminExists?.n ?? 0) > 0,
-      hint: '表结构已就绪。注册的第一个账号将自动成为管理员。',
-    }),
-  );
+  await qOne<{ n: number }>(c.env.DB, 'SELECT COUNT(*) AS n FROM user');
+
+  // 部署脚本以响应体是否为 "success" 判定成败，这里返回纯文本
+  return new Response('success', {
+    headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+  });
 });
 
 export default system;

@@ -1,0 +1,49 @@
+# Henna Mail · 部署专用配置模板
+#
+# 这是部署时使用的模板，含 ${XXX} 占位符，由 CI / deploy.sh 用 sed 填充。
+# 本地开发请用 wrangler.jsonc（那份是真实配置，不含占位符）。
+#
+# 为什么用 TOML 模板而不是往 JSON 里塞值：
+# JSON 里 MAIL_DOMAINS 存的是「数组的字符串形式」，值内带转义引号 \" ，
+# 用正则改写极易写出非法 JSON（InvalidSymbol）。TOML 里 DOMAIN 直接写
+# ["a.com","b.com"] 就是原生数组，且改的是占位符而非字符串内容，天然安全。
+
+name = "${NAME}"
+main = "src/index.ts"
+compatibility_date = "2025-01-09"
+compatibility_flags = ["nodejs_compat"]
+account_id = "${CLOUDFLARE_ACCOUNT_ID}"
+
+[assets]
+directory = "./dist"
+binding = "ASSETS"
+not_found_handling = "single-page-application"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "${NAME}-db"
+database_id = "${D1_DATABASE_ID}"
+
+[[kv_namespaces]]
+binding = "KV"
+id = "${KV_NAMESPACE_ID}"
+
+[[r2_buckets]]
+binding = "R2"
+bucket_name = "${R2_BUCKET_NAME}"
+
+[observability]
+enabled = true
+
+[vars]
+APP_NAME = "Henna Mail"
+JWT_SECRET = "${JWT_SECRET}"
+ADMIN_EMAIL = "${ADMIN}"
+# 注意：这里的引号会被 sed 连同占位符一起替换成裸数组
+MAIL_DOMAINS = "${DOMAIN}"
+ALLOW_REGISTER = "true"
+DEFAULT_QUOTA = "50"
+PROVIDER_STRATEGY = "priority"
+
+[triggers]
+crons = ["0 16 * * *"]
