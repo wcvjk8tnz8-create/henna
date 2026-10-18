@@ -99,7 +99,10 @@ echo "▶ [7/7] 初始化数据库"
 for i in 1 2 3 4 5 6 7 8; do
   sleep 12
   # --ipv4 规避 IPv6 解析失败导致的 HTTP 000
-  BODY=$(curl -4 -sL --max-time 20 "$WORKER_URL/api/init/${JWT_SECRET}" || echo "")
+  set +e
+  curl -4 -sL --max-time 20 -o /tmp/henna-init.txt "$WORKER_URL/api/init/${JWT_SECRET}" 2>/dev/null
+  set -e
+  BODY=$(head -c 200 /tmp/henna-init.txt 2>/dev/null || echo "")
   echo "   · 第 $i 次 -> ${BODY:-（无响应）}"
   if [[ "$BODY" == "success" ]]; then
     echo
