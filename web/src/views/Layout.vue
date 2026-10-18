@@ -82,7 +82,7 @@ const paths: Record<string, string> = {
     >
       <!-- 头部：logo + 折叠按钮 -->
       <div class="flex items-center gap-2.5 px-4 py-5" :class="collapsed ? 'justify-center px-2' : ''">
-        <img src="/logo-512.png" alt="Henna Mail" class="h-9 w-auto shrink-0" />
+        <img src="/logo-512.png" alt="Henna Mail" class="h-7 w-auto shrink-0" />
         <div v-if="!collapsed" class="min-w-0 flex-1 leading-tight">
           <div class="truncate text-sm font-semibold text-ink-900">{{ store.config?.appName ?? 'Henna Mail' }}</div>
           <div class="text-[11px] text-ink-500">邮箱分发系统</div>

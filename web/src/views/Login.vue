@@ -172,7 +172,7 @@ function oauthLogin(key: string) {
       <div class="w-full max-w-sm">
         <!-- Logo -->
         <div class="mb-7 flex items-center gap-3 md:mb-9">
-          <img src="/logo-512.png" alt="Henna Mail" class="h-11 w-auto md:h-14" />
+          <img src="/logo-512.png" alt="Henna Mail" class="h-10 w-auto md:h-12" />
         </div>
 
         <h1 class="text-xl font-semibold tracking-tight text-ink-900 md:text-2xl">
