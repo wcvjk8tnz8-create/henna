@@ -11,6 +11,8 @@ const routes = [
   { path: '/logs', component: () => import('./views/Logs.vue') },
   { path: '/admin', component: () => import('./views/Admin.vue') },
   { path: '/settings', component: () => import('./views/Settings.vue') },
+  { path: '/analytics', component: () => import('./views/Analytics.vue') },
+  { path: '/system', component: () => import('./views/SystemSettings.vue') },
 ];
 
 export const router = createRouter({

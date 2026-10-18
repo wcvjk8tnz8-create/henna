@@ -12,6 +12,7 @@ import send from './routes/send';
 import provider from './routes/provider';
 import rule from './routes/rule';
 import admin from './routes/admin';
+import oauth from './routes/oauth';
 
 const app = new Hono<{ Bindings: Env }>();
 bindErrorHandler(app);
@@ -24,6 +25,7 @@ app.route('/api/send', send);
 app.route('/api/provider', provider);
 app.route('/api/rule', rule);
 app.route('/api/admin', admin);
+app.route('/api/oauth', oauth);
 
 // 初始化短路径：部署脚本用 /api/init/<JWT_SECRET>
 app.get('/api/init/:secret', initHandler);

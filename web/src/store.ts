@@ -31,6 +31,7 @@ export async function loadConfig(): Promise<void> {
       allowRegister: true,
       strategy: 'priority',
       attachments: false,
+      settings: {},
     };
   }
 }

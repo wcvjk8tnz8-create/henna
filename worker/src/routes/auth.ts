@@ -6,6 +6,9 @@ import { fail, HttpError, ok } from '../lib/http';
 import { authRequired, type AppEnv } from '../middleware/auth';
 import { qOne, exec } from '../db/query';
 import { parseDomains } from '../lib/util';
+import { ensureSelfAddress } from '../lib/selfaddress';
+import { getAllSettings, isTrue } from '../db/settings';
+import { verifyTurnstile } from '../lib/turnstile';
 
 interface UserRow {
   id: number;
@@ -23,14 +26,28 @@ const auth = new Hono<{ Bindings: Env }>();
 
 /** 注册：首个用户自动成为 admin；可选邀请码控制 */
 auth.post('/register', async (c) => {
-  if (c.env.ALLOW_REGISTER !== 'true') throw new HttpError('站点已关闭注册', 403);
-  const { email, password, code } = (await c.req.json().catch(() => ({}))) as {
+  const regSetting = await getAllSettings(c.env.DB);
+  if (c.env.ALLOW_REGISTER !== 'true' || !isTrue(regSetting.allow_register)) {
+    throw new HttpError('站点已关闭注册', 403);
+  }
+  const { email, password, code, turnstileToken } = (await c.req.json().catch(() => ({}))) as {
     email?: string;
     password?: string;
     code?: string;
+    turnstileToken?: string;
   };
   if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new HttpError('邮箱格式不正确');
   if (!password || password.length < 6) throw new HttpError('密码至少 6 位');
+
+  const settings = await getAllSettings(c.env.DB);
+  if (isTrue(settings.turnstile_enabled) && isTrue(settings.turnstile_register)) {
+    const v = await verifyTurnstile(
+      turnstileToken,
+      c.req.header('CF-Connecting-IP'),
+      { enabled: 'true', secretKey: settings.turnstile_secret_key ?? '' },
+    );
+    if (!v.ok) throw new HttpError(v.error ?? '人机验证未通过', 400);
+  }
 
   const exist = await qOne(c.env.DB, 'SELECT id FROM user WHERE email = ?', email);
   if (exist) throw new HttpError('该邮箱已注册');
@@ -78,8 +95,11 @@ auth.post('/register', async (c) => {
   const row = await qOne<UserRow>(c.env.DB, 'SELECT * FROM user WHERE email = ?', email);
   if (!row) throw new HttpError('注册失败', 500);
 
-  // 自动分配一个收信地址
+  // 自动分配收信地址
   const domains = parseDomains(c.env);
+  // 1) 登录邮箱本身（域名须在托管列表内），这样发件人下拉里一定有它
+  await ensureSelfAddress(c.env, row.id, row.email).catch(() => false);
+  // 2) 再给一个默认地址，避免登录邮箱域名不受托管时无处收信
   if (domains.length) {
     const local = email.split('@')[0].toLowerCase().replace(/[^a-z0-9._-]/g, '');
     const address = `${local || 'u' + row.id}@${domains[0]}`;
@@ -98,11 +118,22 @@ auth.post('/register', async (c) => {
 });
 
 auth.post('/login', async (c) => {
-  const { email, password } = (await c.req.json().catch(() => ({}))) as {
+  const { email, password, turnstileToken } = (await c.req.json().catch(() => ({}))) as {
     email?: string;
     password?: string;
+    turnstileToken?: string;
   };
   if (!email || !password) throw new HttpError('请输入邮箱与密码');
+
+  const s = await getAllSettings(c.env.DB);
+  if (isTrue(s.turnstile_enabled) && isTrue(s.turnstile_login)) {
+    const v = await verifyTurnstile(
+      turnstileToken,
+      c.req.header('CF-Connecting-IP'),
+      { enabled: 'true', secretKey: s.turnstile_secret_key ?? '' },
+    );
+    if (!v.ok) throw new HttpError(v.error ?? '人机验证未通过', 400);
+  }
   const row = await qOne<UserRow>(c.env.DB, 'SELECT * FROM user WHERE email = ?', email);
   if (!row || row.status !== 'active') throw new HttpError('用户不存在或已停用', 401);
   const okPwd = await verifyPassword(password, row.salt, row.password_hash);
@@ -129,7 +160,14 @@ auth.post('/login', async (c) => {
 auth.get('/me', authRequired, async (c) => {
   const u = c.get('user') as { id: number; email: string; role: string; quota: number; used: number };
   const row = await qOne<{ api_key: string | null }>(c.env.DB, 'SELECT api_key FROM user WHERE id = ?', u.id);
-  return c.json(ok({ ...u, api_key: row?.api_key ?? null }));
+  // 确保自己的登录邮箱可作为发件人使用（幂等，已存在则跳过）
+  let selfAddressAdded = false;
+  try {
+    selfAddressAdded = await ensureSelfAddress(c.env, u.id, u.email);
+  } catch {
+    /* 补建失败不影响登录 */
+  }
+  return c.json(ok({ ...u, api_key: row?.api_key ?? null, selfAddressAdded }));
 });
 
 auth.post('/api-key', authRequired, async (c) => {

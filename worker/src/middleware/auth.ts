@@ -51,3 +51,30 @@ export const adminOnly = createMiddleware<AppEnv>(async (c, next) => {
   if (!user || user.role !== 'admin') throw new HttpError('需要管理员权限', 403);
   await next();
 });
+
+/**
+ * 可选鉴权：能解析出用户就写入 context，解析不出来也不报错。
+ * 用于「管理员看到更多、游客看到部分」这类接口。
+ */
+export const authOptional = createMiddleware<AppEnv>(async (c, next) => {
+  const header = c.req.header('Authorization') ?? '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : '';
+  if (!token) {
+    await next();
+    return;
+  }
+  try {
+    const payload = await verifyJwt(token, c.env.JWT_SECRET);
+    if (payload) {
+      const row = await c.env.DB.prepare(
+        'SELECT id, email, role, quota, used FROM user WHERE id = ? AND status = ?',
+      )
+        .bind(payload.sub, 'active')
+        .first<SessionUser>();
+      if (row) c.set('user', row);
+    }
+  } catch {
+    /* 无效 token 等同游客 */
+  }
+  await next();
+});

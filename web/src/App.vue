@@ -12,8 +12,10 @@ const navs = computed(() => [
   { to: '/providers', label: '发信服务商', icon: 'plug' },
   { to: '/rules', label: '分发规则', icon: 'route' },
   { to: '/logs', label: '发信日志', icon: 'list' },
+  ...(store.me?.role === 'admin' ? [{ to: '/analytics', label: '分析', icon: 'chart' }] : []),
   ...(store.me?.role === 'admin' ? [{ to: '/admin', label: '管理后台', icon: 'shield' }] : []),
   { to: '/settings', label: '账户设置', icon: 'gear' },
+  ...(store.me?.role === 'admin' ? [{ to: '/system', label: '系统设置', icon: 'sliders' }] : []),
 ]);
 
 onMounted(async () => {
@@ -30,6 +32,8 @@ const paths: Record<string, string> = {
   list: 'M4 6h16M4 12h16M4 18h10',
   shield: 'M12 3l7 3v6c0 4-3 7-7 9-4-2-7-5-7-9V6l7-3z',
   gear: 'M12 15a3 3 0 100-6 3 3 0 000 6zm8-3a8 8 0 00-.2-1.7l1.7-1.3-1.7-3-2 .8a8 8 0 00-2.9-1.7L14.5 3h-3.4l-.4 2.1a8 8 0 00-2.9 1.7l-2-.8-1.7 3 1.7 1.3A8 8 0 004 12c0 .6.1 1.2.2 1.7l-1.7 1.3 1.7 3 2-.8a8 8 0 002.9 1.7l.4 2.1h3.4l.4-2.1a8 8 0 002.9-1.7l2 .8 1.7-3-1.7-1.3c.1-.5.2-1.1.2-1.7z',
+  chart: 'M4 20V10M10 20V4M16 20v-7M22 20H2',
+  sliders: 'M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0M16 4v4M10 10v4M20 16v4',
 };
 </script>
 

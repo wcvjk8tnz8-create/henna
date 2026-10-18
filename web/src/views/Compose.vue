@@ -1,7 +1,13 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import { api, type Address, type ProviderItem } from '../api';
 import { toast } from '../store';
+
+const route = useRoute();
+const router = useRouter();
+const draftId = ref<number | undefined>(undefined);
+const savingDraft = ref(false);
 
 const addresses = ref<Address[]>([]);
 const providers = ref<ProviderItem[]>([]);
@@ -20,10 +26,49 @@ onMounted(async () => {
     addresses.value = await api.get<Address[]>('/mailbox');
     if (addresses.value[0]) from.value = addresses.value[0].address;
     providers.value = await api.get<ProviderItem[]>('/provider');
+
+    // 从草稿箱跳转过来：回填内容
+    const d = route.query.draft;
+    if (d) {
+      draftId.value = Number(d);
+      to.value = String(route.query.to ?? '');
+      subject.value = String(route.query.subject ?? '');
+      body.value = String(route.query.body ?? '');
+      toast('已载入草稿');
+    }
   } catch (e) {
     toast((e as Error).message, 'err');
   }
 });
+
+/** 保存草稿（有 id 则更新，否则新建） */
+async function saveDraft() {
+  if (!to.value && !subject.value && !body.value) return toast('内容为空，无需保存', 'err');
+  savingDraft.value = true;
+  try {
+    const r = await api.post<{ id: number }>('/message/draft', {
+      id: draftId.value,
+      to: to.value,
+      subject: subject.value,
+      from: from.value,
+      text: mode.value === 'text' ? body.value : undefined,
+      html: mode.value === 'html' ? body.value : undefined,
+    });
+    draftId.value = r.id;
+    toast('草稿已保存', 'ok');
+  } catch (e) {
+    toast((e as Error).message, 'err');
+  } finally {
+    savingDraft.value = false;
+  }
+}
+
+/** 发送成功后清掉草稿 */
+async function dropDraft() {
+  if (!draftId.value) return;
+  await api.del(`/message/draft/${draftId.value}`).catch(() => undefined);
+  draftId.value = undefined;
+}
 
 const recipients = () =>
   to.value
@@ -55,6 +100,10 @@ async function send() {
       const r = await api.post<{ success: boolean; provider: string; error?: string; attempts?: unknown }>('/send', payload);
       result.value = r;
       toast(r.success ? '发送成功' : `发送失败：${r.error ?? '未知错误'}`, r.success ? 'ok' : 'err');
+      if (r.success) {
+        await dropDraft();
+        router.push('/');
+      }
     }
   } catch (e) {
     toast((e as Error).message, 'err');
@@ -127,6 +176,9 @@ async function send() {
         </label>
         <button class="btn-primary ml-auto" :disabled="sending" @click="send">
           {{ sending ? '发送中…' : bulk ? '开始群发' : '发送' }}
+        </button>
+        <button class="btn-ghost" :disabled="savingDraft" @click="saveDraft">
+          {{ savingDraft ? '保存中…' : '存草稿' }}
         </button>
       </div>
     </div>

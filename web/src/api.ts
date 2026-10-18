@@ -61,8 +61,11 @@ export interface PublicConfig {
   domains: string[];
   allowRegister: boolean;
   strategy: string;
-  /** R2 未绑定时为 false，附件功能降级 */
+  /** 存储未启用时为 false，附件功能降级 */
   attachments: boolean;
+  storage?: string;
+  /** 登录页需要的公开设置 */
+  settings?: Record<string, string>;
 }
 export interface MailItem {
   id: number;
@@ -146,6 +149,11 @@ export interface Stats {
   failed: number;
   trend: { d: string; n: number }[];
   byProvider: { provider: string; n: number }[];
+  totalLogs: number;
+  okLogs: number;
+  today: number;
+  topDomains: { domain: string; n: number }[];
+  topAddresses: { address: string; n: number }[];
 }
 export interface AdminUser {
   id: number;
@@ -164,4 +172,15 @@ export interface Invite {
   max_use: number;
   used: number;
   expire_at: number | null;
+}
+
+export type SettingsMap = Record<string, string>;
+
+export interface StorageStatus {
+  configured: string;
+  effective: string;
+  r2Bound: boolean;
+  publicDomain: string;
+  sampleUrl: string | null;
+  hint: string;
 }

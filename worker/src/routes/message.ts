@@ -27,7 +27,8 @@ interface MessageRow {
 
 message.get('/', authRequired, async (c) => {
   const user = c.get('user');
-  const box = c.req.query('box') === 'out' ? 'out' : 'in';
+  const boxRaw = c.req.query('box') ?? 'in';
+  const box = boxRaw === 'out' ? 'out' : boxRaw === 'draft' ? 'draft' : 'in';
   const q = (c.req.query('q') ?? '').trim();
   const limit = clamp(Number(c.req.query('limit') ?? 50), 1, 200);
   const offset = clamp(Number(c.req.query('offset') ?? 0), 0, 100000);
@@ -37,6 +38,9 @@ message.get('/', authRequired, async (c) => {
   if (user.role !== 'admin') {
     sql += ' AND user_id = ?';
     args.push(user.id);
+  }
+  if (c.req.query('star') === '1') {
+    sql += ' AND is_star = 1';
   }
   if (q) {
     sql += ' AND (subject LIKE ? OR from_addr LIKE ? OR to_addr LIKE ?)';
@@ -110,6 +114,79 @@ message.get('/attachment/:id', authRequired, async (c) => {
   headers.set('Content-Type', att.mime);
   headers.set('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(att.name)}`);
   return new Response(obj.body, { headers });
+});
+
+/** 保存 / 更新草稿。带 id 则更新，否则新建。 */
+message.post('/draft', authRequired, async (c) => {
+  const user = c.get('user');
+  const body = (await c.req.json().catch(() => ({}))) as {
+    id?: number;
+    to?: string;
+    subject?: string;
+    text?: string;
+    html?: string;
+    from?: string;
+  };
+  if (!body.id && !body.to && !body.subject && !body.text && !body.html) {
+    throw new HttpError('草稿内容为空');
+  }
+  const now = Date.now();
+
+  if (body.id) {
+    const old = await qOne<MessageRow>(
+      c.env.DB,
+      'SELECT * FROM mail_message WHERE id = ? AND direction = ?',
+      body.id,
+      'draft',
+    );
+    if (!old) throw new HttpError('草稿不存在', 404);
+    if (user.role !== 'admin' && old.user_id !== user.id) throw new HttpError('无权操作', 403);
+    await exec(
+      c.env.DB,
+      'UPDATE mail_message SET to_addr = ?, from_addr = ?, subject = ?, text_body = ?, html_body = ?, created_at = ? WHERE id = ?',
+      body.to ?? old.to_addr,
+      body.from ?? old.from_addr,
+      body.subject ?? old.subject,
+      body.text ?? old.text_body,
+      body.html ?? old.html_body,
+      now,
+      body.id,
+    );
+    return c.json(ok({ id: body.id, updated: true }));
+  }
+
+  const inserted = await c.env.DB.prepare(
+    'INSERT INTO mail_message (user_id, address_id, direction, from_addr, to_addr, subject, text_body, html_body, is_read, is_star, size, created_at) VALUES (?,NULL,?,?,?,?,?,?,1,0,?,?) RETURNING id',
+  )
+    .bind(
+      user.id,
+      'draft',
+      body.from ?? '',
+      body.to ?? '',
+      body.subject ?? '(无主题)',
+      body.text ?? null,
+      body.html ?? null,
+      (body.text ?? '').length + (body.html ?? '').length,
+      now,
+    )
+    .first<{ id: number }>();
+  return c.json(ok({ id: inserted?.id ?? 0, created: true }));
+});
+
+/** 删除草稿 */
+message.delete('/draft/:id', authRequired, async (c) => {
+  const user = c.get('user');
+  const id = Number(c.req.param('id'));
+  const row = await qOne<MessageRow>(
+    c.env.DB,
+    'SELECT * FROM mail_message WHERE id = ? AND direction = ?',
+    id,
+    'draft',
+  );
+  if (!row) throw new HttpError('草稿不存在', 404);
+  if (user.role !== 'admin' && row.user_id !== user.id) throw new HttpError('无权操作', 403);
+  await exec(c.env.DB, 'DELETE FROM mail_message WHERE id = ?', id);
+  return c.json(ok({ deleted: true }));
 });
 
 export default message;

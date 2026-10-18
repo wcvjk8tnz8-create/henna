@@ -2,8 +2,12 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import { api, type MailDetail, type MailItem } from '../api';
 import { fmtSize, fmtTime, toast } from '../store';
+import { useRouter } from 'vue-router';
 
-const box = ref<'in' | 'out'>('in');
+const router = useRouter();
+
+const box = ref<'in' | 'out' | 'draft'>('in');
+const starOnly = ref(false);
 const items = ref<MailItem[]>([]);
 const detail = ref<MailDetail | null>(null);
 const q = ref('');
@@ -12,7 +16,9 @@ const loading = ref(false);
 async function load() {
   loading.value = true;
   try {
-    items.value = await api.get<MailItem[]>(`/message?box=${box.value}&q=${encodeURIComponent(q.value)}`);
+    const qs = new URLSearchParams({ box: box.value, q: q.value });
+    if (starOnly.value) qs.set('star', '1');
+    items.value = await api.get<MailItem[]>(`/message?${qs}`);
   } catch (e) {
     toast((e as Error).message, 'err');
   } finally {
@@ -21,6 +27,14 @@ async function load() {
 }
 
 async function open(id: number) {
+  if (box.value === 'draft') {
+    const d = await api.get<MailDetail>(`/message/${id}`);
+    router.push({
+      path: '/compose',
+      query: { draft: String(id), to: d.to_addr, subject: d.subject ?? '', body: d.html_body ?? d.text_body ?? '' },
+    });
+    return;
+  }
   try {
     detail.value = await api.get<MailDetail>(`/message/${id}`);
     const it = items.value.find((i) => i.id === id);
@@ -47,7 +61,14 @@ async function star() {
 
 const safeHtml = computed(() => detail.value?.html_body ?? '');
 
-watch(box, load);
+const emptyText = computed(() => {
+  if (starOnly.value) return '还没有星标邮件';
+  if (box.value === 'draft') return '没有任何草稿';
+  if (box.value === 'out') return '还没有发送记录';
+  return '暂无邮件。开启 Cloudflare Email Routing 后即可收信。';
+});
+
+watch([box, starOnly], load);
 onMounted(load);
 </script>
 
@@ -71,14 +92,31 @@ onMounted(load);
           >
             已发送
           </button>
+          <button
+            class="rounded-md px-3 py-1 text-xs font-medium"
+            :class="box === 'draft' ? 'bg-white text-ink-900 shadow-sm' : 'text-ink-500'"
+            @click="box = 'draft'"
+          >
+            草稿箱
+          </button>
         </div>
+        <button
+          class="shrink-0 rounded-md border px-2.5 py-1 text-xs font-medium transition"
+          :class="starOnly ? 'border-clay-400 bg-clay-500/10 text-clay-600' : 'border-sand-200 text-ink-500'"
+          @click="starOnly = !starOnly"
+        >
+          ★ 星标
+        </button>
         <input v-model="q" class="input !py-1.5 text-xs" placeholder="搜索主题 / 地址" @keyup.enter="load" />
       </div>
 
       <div class="min-h-0 flex-1 overflow-y-auto">
-        <p v-if="!items.length && !loading" class="p-8 text-center text-sm text-ink-500">
-          暂无邮件。开启 Cloudflare Email Routing 后即可收信。
-        </p>
+        <div v-if="!items.length && !loading" class="p-8 text-center">
+          <svg viewBox="0 0 24 24" class="mx-auto h-12 w-12 text-sand-300" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M3 7h18v10H3z" /><path d="M3 7l9 6 9-6" />
+          </svg>
+          <p class="mt-3 text-sm text-ink-500">{{ emptyText }}</p>
+        </div>
         <button
           v-for="m in items"
           :key="m.id"

@@ -100,6 +100,32 @@ admin.get('/stats', async (c) => {
     c.env.DB,
     'SELECT provider, COUNT(*) AS n FROM mail_log GROUP BY provider ORDER BY n DESC',
   );
+  // 发信成功率
+  const [totalLogs, okLogs] = await Promise.all([
+    qOne<{ n: number }>(c.env.DB, 'SELECT COUNT(*) AS n FROM mail_log'),
+    qOne<{ n: number }>(c.env.DB, "SELECT COUNT(*) AS n FROM mail_log WHERE status = 'success'"),
+  ]);
+  // 收信来源域名 Top
+  const topDomains = await qAll<{ domain: string; n: number }>(
+    c.env.DB,
+    `SELECT lower(substr(from_addr, instr(from_addr, '@') + 1)) AS domain, COUNT(*) AS n
+     FROM mail_message WHERE direction = 'in' AND from_addr LIKE '%@%'
+     GROUP BY domain ORDER BY n DESC LIMIT 8`,
+  );
+  // 活跃地址 Top（按收信量）
+  const topAddresses = await qAll<{ address: string; n: number }>(
+    c.env.DB,
+    `SELECT to_addr AS address, COUNT(*) AS n FROM mail_message
+     WHERE direction = 'in' GROUP BY to_addr ORDER BY n DESC LIMIT 8`,
+  );
+  // 今日发信
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const today = await qOne<{ n: number }>(
+    c.env.DB,
+    'SELECT COUNT(*) AS n FROM mail_log WHERE created_at >= ?',
+    todayStart.getTime(),
+  );
   return c.json(
     ok({
       users: users?.n ?? 0,
@@ -110,6 +136,11 @@ admin.get('/stats', async (c) => {
       failed: logs?.n ?? 0,
       trend: recent.reverse(),
       byProvider,
+      totalLogs: totalLogs?.n ?? 0,
+      okLogs: okLogs?.n ?? 0,
+      today: today?.n ?? 0,
+      topDomains,
+      topAddresses,
     }),
   );
 });

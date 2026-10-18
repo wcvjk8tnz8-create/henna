@@ -74,3 +74,15 @@ export function htmlToText(html: string): string {
 export function clamp(n: number, min: number, max: number): number {
   return Math.min(Math.max(n, min), max);
 }
+
+/** 取邮箱的域名部分，小写；非法输入返回空串 */
+export function domainOf(email: string | undefined | null): string {
+  const s = String(email ?? '').trim().toLowerCase();
+  const at = s.lastIndexOf('@');
+  return at > 0 ? s.slice(at + 1) : '';
+}
+
+/** 合法的邮箱地址名（local part）清洗：小写、只保留常见字符 */
+export function normalizeLocal(local: string): string {
+  return local.toLowerCase().replace(/[^a-z0-9._+-]/g, '');
+}
