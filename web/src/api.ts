@@ -61,6 +61,8 @@ export interface PublicConfig {
   domains: string[];
   allowRegister: boolean;
   strategy: string;
+  /** R2 未绑定时为 false，附件功能降级 */
+  attachments: boolean;
 }
 export interface MailItem {
   id: number;

@@ -1,11 +1,11 @@
 # Henna Mail · 部署专用配置模板
 #
-# 这是部署时使用的模板，含 ${XXX} 占位符，由 CI / deploy.sh 用 sed 填充。
+# 这是部署时使用的模板，含占位符，由 CI / deploy.sh 用 sed 填充。
 # 本地开发请用 wrangler.jsonc（那份是真实配置，不含占位符）。
 #
 # 为什么用 TOML 模板而不是往 JSON 里塞值：
 # JSON 里 MAIL_DOMAINS 存的是「数组的字符串形式」，值内带转义引号 \" ，
-# 用正则改写极易写出非法 JSON（InvalidSymbol）。TOML 里 DOMAIN 直接写
+# 用正则改写极易写出非法 JSON。TOML 里 DOMAIN 直接写
 # ["a.com","b.com"] 就是原生数组，且改的是占位符而非字符串内容，天然安全。
 
 name = "${NAME}"

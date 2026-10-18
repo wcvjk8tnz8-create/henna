@@ -17,6 +17,8 @@ system.get('/config', async (c) => {
       domains: parseDomains(c.env),
       allowRegister: c.env.ALLOW_REGISTER === 'true',
       strategy: c.env.PROVIDER_STRATEGY || 'priority',
+      /** R2 未绑定时为 false，前端据此提示附件功能已降级 */
+      attachments: !!c.env.R2,
     }),
   );
 });

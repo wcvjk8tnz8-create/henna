@@ -25,7 +25,13 @@ export async function loadConfig(): Promise<void> {
   try {
     store.config = await api.get<PublicConfig>('/system/config');
   } catch {
-    store.config = { appName: 'Henna Mail', domains: [], allowRegister: true, strategy: 'priority' };
+    store.config = {
+      appName: 'Henna Mail',
+      domains: [],
+      allowRegister: true,
+      strategy: 'priority',
+      attachments: false,
+    };
   }
 }
 

@@ -60,6 +60,18 @@ const curl = computed(() => `curl -X POST ${location.origin}/api/send \\
       <pre class="mt-3 overflow-auto rounded-lg bg-sand-100 p-3 text-[11px] leading-relaxed">{{ curl }}</pre>
     </div>
 
+    <div v-if="!store.config?.attachments" class="card mt-4 border-clay-400/40 bg-clay-500/5 p-5">
+      <h2 class="mb-2 text-sm font-semibold text-ink-900">附件存储未启用</h2>
+      <p class="mb-3 text-xs leading-relaxed text-ink-500">
+        当前没有绑定 R2，收到的邮件附件只保存文件名与大小，不保存内容。
+        收信、发信、规则分发不受影响。绑一个 R2 桶再重新部署一次即可开启。
+      </p>
+      <pre class="overflow-auto rounded-lg bg-sand-100 p-3 text-[11px] leading-relaxed"># 仓库 Secrets 里加一行
+R2_BUCKET_NAME = henna-mail-r2      # 你的桶名，留空则自动创建
+
+# 然后重新运行 deploy 工作流</pre>
+    </div>
+
     <div class="card mt-4 p-5">
       <h2 class="mb-3 text-sm font-semibold text-ink-900">系统信息</h2>
       <dl class="space-y-2 text-xs">
@@ -70,6 +82,14 @@ const curl = computed(() => `curl -X POST ${location.origin}/api/send \\
         <div class="flex justify-between border-b border-sand-100 pb-2">
           <dt class="text-ink-500">调度策略</dt>
           <dd>{{ store.config?.strategy }}</dd>
+        </div>
+        <div class="flex justify-between border-b border-sand-100 pb-2">
+          <dt class="text-ink-500">附件存储（R2）</dt>
+          <dd>
+            <span :class="store.config?.attachments ? 'chip-ok' : 'chip-warn'">
+              {{ store.config?.attachments ? '已启用' : '未启用' }}
+            </span>
+          </dd>
         </div>
         <div class="flex justify-between">
           <dt class="text-ink-500">运行环境</dt>
