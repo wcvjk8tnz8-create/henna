@@ -201,6 +201,69 @@ onMounted(load);
           </p>
         </div>
 
+        <!-- 内置云层的配色与动态 -->
+        <template v-if="s.login_bg_mode === 'builtin'">
+          <div class="mt-4 rounded-lg border border-sand-200 p-3">
+            <p class="mb-3 text-[11px] leading-relaxed text-ink-500">
+              内置背景是 WebGL 云层（Aceternity UI · Cloud Shader）。
+              不支持 WebGL 的设备会自动回退到 CSS 版晴空，不会白屏。
+            </p>
+            <div class="grid gap-3 md:grid-cols-3">
+              <div>
+                <label class="label">天空顶部</label>
+                <div class="flex items-center gap-2">
+                  <input v-model="s.login_shader_sky_top" type="color" class="h-8 w-8 shrink-0 rounded border border-sand-300" />
+                  <input v-model="s.login_shader_sky_top" class="input" placeholder="#3876ba" />
+                </div>
+              </div>
+              <div>
+                <label class="label">天空底部</label>
+                <div class="flex items-center gap-2">
+                  <input v-model="s.login_shader_sky_bottom" type="color" class="h-8 w-8 shrink-0 rounded border border-sand-300" />
+                  <input v-model="s.login_shader_sky_bottom" class="input" placeholder="#8cbfe8" />
+                </div>
+              </div>
+              <div>
+                <label class="label">云朵颜色</label>
+                <div class="flex items-center gap-2">
+                  <input v-model="s.login_shader_cloud" type="color" class="h-8 w-8 shrink-0 rounded border border-sand-300" />
+                  <input v-model="s.login_shader_cloud" class="input" placeholder="#fbf8f2" />
+                </div>
+              </div>
+            </div>
+            <div class="mt-3 grid gap-3 md:grid-cols-2">
+              <div>
+                <label class="label">云朵数量 · {{ s.login_shader_count || '6' }}</label>
+                <input v-model="s.login_shader_count" type="range" min="1" max="6" step="1" class="w-full accent-henna-500" />
+              </div>
+              <div>
+                <label class="label">漂移速度 · {{ s.login_shader_speed || '1' }}×</label>
+                <input v-model="s.login_shader_speed" type="range" min="0" max="3" step="0.1" class="w-full accent-henna-500" />
+              </div>
+            </div>
+            <div class="mt-3 flex flex-wrap gap-2">
+              <button
+                class="btn-ghost !px-2.5 !py-1 text-xs"
+                @click="s.login_shader_sky_top = '#3876ba'; s.login_shader_sky_bottom = '#8cbfe8'; s.login_shader_cloud = '#fbf8f2'"
+              >
+                默认晴空
+              </button>
+              <button
+                class="btn-ghost !px-2.5 !py-1 text-xs"
+                @click="s.login_shader_sky_top = '#1b2a4a'; s.login_shader_sky_bottom = '#5b7aa8'; s.login_shader_cloud = '#dfe6f2'"
+              >
+                暮色
+              </button>
+              <button
+                class="btn-ghost !px-2.5 !py-1 text-xs"
+                @click="s.login_shader_sky_top = '#b4462f'; s.login_shader_sky_bottom = '#e8a87c'; s.login_shader_cloud = '#fdf3ea'"
+              >
+                暖赭（品牌色）
+              </button>
+            </div>
+          </div>
+        </template>
+
         <div class="mt-4">
           <label class="label">右侧面板不透明度 · {{ opacityPercent }}%</label>
           <input v-model.number="opacityPercent" type="range" min="40" max="100" class="w-full accent-henna-500" />

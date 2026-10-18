@@ -1,8 +1,14 @@
-# Henna Mail · 边缘邮箱分发系统
+<div align="center">
+  <img src="docs/preview/logo.png" alt="Henna Mail" width="180" />
+  <h1>Henna Mail</h1>
+  <p><b>边缘邮箱分发系统</b> · Cloudflare Workers · 全栈 TypeScript</p>
+</div>
 
 一个跑在 Cloudflare Workers 上的邮箱分发系统：收信（Email Routing）+ 发信（多服务商可插拔）+ 账号分发（邀请码 / 批量开户）+ 规则分发（Telegram / Webhook / 外部邮箱转发）。
 
 参考设计：[Cloud Mail](https://github.com/maillab/cloud-mail) / [doc.skymail.ink](https://doc.skymail.ink)。本项目为独立实现，全栈 TypeScript。
+
+![登录页 · 云层背景](docs/preview/09-login-shader.png)
 
 ![收件箱](docs/preview/01-inbox.png)
 
@@ -13,9 +19,9 @@
 | 项 | 结果 |
 |---|---|
 | Worker TypeScript 类型检查（`tsc --noEmit`） | 通过，0 error |
-| Worker 打包（esbuild bundle） | 通过，208 KB |
-| 前端生产构建（Vite + Tailwind v4） | 通过，CSS 26.6 KB / JS 96 KB |
-| 冒烟测试（12 项） | 12 passed, 0 failed |
+| Worker 打包（esbuild bundle） | 通过，235 KB |
+| 前端生产构建（Vite + Tailwind v4） | 通过，CSS 28 KB / JS 97 KB |
+| 冒烟测试（12 项）+ 域名解析回归（11 项） | 23 passed, 0 failed |
 | 界面预览截图 | 8 张，0 个蓝紫像素 |
 
 冒烟测试覆盖：口令哈希与校验、JWT 签发/验签/过期拒绝、服务商优先级调度、故障自动转移、指定通道（pinned）、全部失败与无通道的兜底报错。
@@ -157,14 +163,30 @@ export interface MailProvider {
 
 | 模式 | 说明 |
 |---|---|
-| `builtin`（默认） | 内置晴空渐变 + 云 + 远山，纯 SVG/CSS，**不请求任何外部资源**，离线可用、零延迟、不泄露访客 IP |
+| `builtin`（默认） | WebGL 云层（Aceternity UI · Cloud Shader），天空/云色、云量、漂移速度都可调；不支持 WebGL 的设备自动回退到 CSS 版晴空 |
 | `custom` | 自定义图片，可填在线链接或本地上传（优先写对象存储，无存储时 ≤512KB 内联保存） |
 | `api` | 每日一图接口，每次刷新重新请求。注意会向第三方暴露访客 IP |
 
-图片加载失败会自动回退到内置晴空，不会白屏。右侧面板的不透明度可调（40%~100%）。
+图片加载失败会自动回退到内置云层，不会白屏。右侧面板的不透明度可调（40%~100%）。
 
-品牌资源在 `web/public/`：`logo.png`（透明底原图）、`logo-512.png`（界面用）、`favicon.ico`。
-换 logo 直接覆盖这三个文件重新部署即可。
+**内置云层**来自 [Aceternity UI 的 Cloud Shader](https://ui.aceternity.com/components/cloud-shader)：
+GLSL 里每朵云是非对称包络（顶圆顶、底平），填充域扭曲的 billow 噪声，
+再往上采样一次密度近似自阴影，另有薄卷积云条、太阳光晕与远近视差。
+尊重系统的「减弱动态效果」设置（开启后云静止），页面不可见时不渲染。
+
+三个预设配色：默认晴空 / 暮色 / 暖赭（品牌色）。
+
+品牌资源在 `web/public/`：
+
+| 文件 | 用途 |
+|---|---|
+| `logo.png` | 透明底原图 |
+| `logo-512.png` | 界面用（登录页、侧边栏、README） |
+| `favicon.ico` | 浏览器标签，圆角方形（16/32/48） |
+| `apple-touch-icon.png` | iOS 添加到主屏幕（180） |
+| `icon-192.png` / `icon-512.png` | PWA 图标，同为圆角 |
+
+换 logo 时用 `logo.png` 覆盖后重新生成其余尺寸即可，圆角半径是图标边长的 22%。
 
 ### 🔌 自行绑定 R2（可选，随时可补）
 

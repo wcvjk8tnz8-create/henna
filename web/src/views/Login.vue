@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { api, setToken, type Me } from '../api';
 import { loadConfig, loadMe, store, toast } from '../store';
 import CloudSky from '../components/CloudSky.vue';
+import CloudShader from '../components/CloudShader.vue';
 
 const router = useRouter();
 const route = useRoute();
@@ -25,6 +26,9 @@ const bgUrl = computed(() => {
   if (bgMode.value === 'api') return st.value.login_bg_api || '';
   return '';
 });
+
+const shaderSpeed = computed(() => Number(st.value.login_shader_speed || 1) || 1);
+const shaderCount = computed(() => Math.min(6, Math.max(1, Number(st.value.login_shader_count || 6) || 6)));
 
 const useImage = computed(() => bgMode.value !== 'builtin' && !!bgUrl.value);
 const useSky = computed(() => !useImage.value);
@@ -130,7 +134,18 @@ function oauthLogin(key: string) {
   <div class="relative flex min-h-full bg-white">
     <!-- 左：背景（内置晴空 / 自定义图片 / 每日一图） -->
     <div class="pointer-events-none fixed inset-0">
-      <CloudSky v-if="showSky" :dim="0" />
+      <CloudShader
+        v-if="showSky"
+        class="h-full w-full"
+        :speed="shaderSpeed"
+        :count="shaderCount"
+        :cloud-color="st.login_shader_cloud || '#fbf8f2'"
+        :sky-top-color="st.login_shader_sky_top || '#3876ba'"
+        :sky-bottom-color="st.login_shader_sky_bottom || '#8cbfe8'"
+      >
+        <!-- WebGL 不可用时回退到 CSS 版晴空 -->
+        <CloudSky />
+      </CloudShader>
       <img v-else :src="bgUrl" alt="" class="h-full w-full object-cover" @error="imgFailed = true" />
       <!-- 移动端整屏压白保证可读；桌面端只把右侧面板区域压成纯白 -->
       <div class="absolute inset-0 md:hidden" :style="{ backgroundColor: `rgba(255,255,255,${Math.max(opacity, 0.85)})` }" />
