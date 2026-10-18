@@ -82,6 +82,16 @@ admin.post('/invite', async (c) => {
   return c.json(ok({ codes }));
 });
 
+/**
+ * 清空全部邀请码。
+ * 用 POST + 独立路径，避免和下面的 DELETE /invite/:id 抢路由
+ * （Hono 里 /invite/clear 也会被 /invite/:id 匹配到）。
+ */
+admin.post('/invite/clear', async (c) => {
+  const r = await c.env.DB.prepare('DELETE FROM invite_code').run();
+  return c.json(ok({ deleted: r.meta?.changes ?? 0 }));
+});
+
 admin.get('/invite', async (c) => {
   const rows = await qAll(c.env.DB, 'SELECT * FROM invite_code ORDER BY id DESC LIMIT 200');
   return c.json(ok(rows));

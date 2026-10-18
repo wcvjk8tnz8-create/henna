@@ -172,7 +172,11 @@ auth.post('/login', async (c) => {
 
 auth.get('/me', authRequired, async (c) => {
   const u = c.get('user') as { id: number; email: string; role: string; quota: number; used: number };
-  const row = await qOne<{ api_key: string | null }>(c.env.DB, 'SELECT api_key FROM user WHERE id = ?', u.id);
+  const row = await qOne<{ api_key: string | null; created_at: number }>(
+    c.env.DB,
+    'SELECT api_key, created_at FROM user WHERE id = ?',
+    u.id,
+  );
   // 确保自己的登录邮箱可作为发件人使用（幂等，已存在则跳过）
   let selfAddressAdded = false;
   try {
@@ -180,7 +184,9 @@ auth.get('/me', authRequired, async (c) => {
   } catch {
     /* 补建失败不影响登录 */
   }
-  return c.json(ok({ ...u, api_key: row?.api_key ?? null, selfAddressAdded }));
+  return c.json(
+    ok({ ...u, api_key: row?.api_key ?? null, created_at: row?.created_at ?? null, selfAddressAdded }),
+  );
 });
 
 auth.post('/api-key', authRequired, async (c) => {

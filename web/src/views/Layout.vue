@@ -25,19 +25,20 @@ const isAdmin = computed(() => store.me?.role === 'admin');
 const navs = computed(() => [
   { to: '/', label: '收件箱', icon: 'inbox' },
   { to: '/compose', label: '写信', icon: 'send' },
+  /*
+   * 管理项合并后只剩三个入口：
+   *   全部收件箱 / 邮箱（地址+日志+分析）/ 站点管理（服务商+规则+用户+系统）
+   * 邀请码独立成页，因为它日常用得多，塞在管理里每次都要多翻一层。
+   */
   ...(isAdmin.value
     ? [
         { to: '/all', label: '全部收件箱', icon: 'users' },
-        { to: '/addresses', label: '邮箱地址', icon: 'at' },
-        { to: '/providers', label: '发信服务商', icon: 'plug' },
-        { to: '/rules', label: '分发规则', icon: 'route' },
-        { to: '/logs', label: '发信日志', icon: 'list' },
-        { to: '/analytics', label: '分析', icon: 'chart' },
-        { to: '/admin', label: '管理后台', icon: 'shield' },
+        { to: '/mail', label: '邮箱', icon: 'at' },
+        { to: '/invites', label: '邀请码', icon: 'ticket' },
+        { to: '/manage', label: '站点管理', icon: 'sliders' },
       ]
     : []),
   { to: '/settings', label: '账户设置', icon: 'gear' },
-  ...(isAdmin.value ? [{ to: '/system', label: '系统设置', icon: 'sliders' }] : []),
 ]);
 
 onMounted(async () => {
@@ -66,6 +67,7 @@ const paths: Record<string, string> = {
   chart: 'M4 20V10M10 20V4M16 20v-7M22 20H2',
   sliders: 'M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0M16 4v4M10 10v4M20 16v4',
   users: 'M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8zM23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75',
+  ticket: 'M3 9V7a2 2 0 012-2h14a2 2 0 012 2v2a2 2 0 000 4v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4a2 2 0 000-4zM13 5v14',
   collapse: 'M15 6l-6 6 6 6',
   expand: 'M9 6l6 6-6 6',
 };

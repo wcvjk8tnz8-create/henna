@@ -1,17 +1,15 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
-import { api, type AdminUser, type Invite, type Stats } from '../api';
+import { api, type AdminUser, type Stats } from '../api';
 import { fmtTime, store, toast } from '../store';
 
 const stats = ref<Stats | null>(null);
 const users = ref<AdminUser[]>([]);
-const invites = ref<Invite[]>([]);
 /** admin@ 前缀的账号恒为管理员 */
 function isProtected(email: string): boolean {
   return String(email ?? '').trim().toLowerCase().split('@')[0] === 'admin';
 }
 
-const inviteForm = ref({ count: 5, quota: 50, role: 'user', maxUse: 1, days: 7 });
 
 const maxTrend = computed(() => Math.max(1, ...(stats.value?.trend ?? []).map((t) => t.n)));
 
@@ -19,17 +17,6 @@ async function load() {
   try {
     stats.value = await api.get<Stats>('/admin/stats');
     users.value = await api.get<AdminUser[]>('/admin/users');
-    invites.value = await api.get<Invite[]>('/admin/invite');
-  } catch (e) {
-    toast((e as Error).message, 'err');
-  }
-}
-
-async function genInvite() {
-  try {
-    const r = await api.post<{ codes: string[] }>('/admin/invite', inviteForm.value);
-    toast(`已生成 ${r.codes.length} 个邀请码`);
-    await load();
   } catch (e) {
     toast((e as Error).message, 'err');
   }
@@ -45,11 +32,6 @@ async function removeUser(u: AdminUser) {
   if (!confirm(`删除用户 ${u.email}？其邮箱地址也会一并删除。`)) return;
   await api.del(`/admin/users/${u.id}`);
   toast('已删除');
-  await load();
-}
-
-async function removeInvite(i: Invite) {
-  await api.del(`/admin/invite/${i.id}`);
   await load();
 }
 
@@ -92,48 +74,6 @@ onMounted(load);
           ></div>
           <span class="text-[10px] text-ink-500">{{ t.d.slice(5) }}</span>
         </div>
-      </div>
-    </div>
-
-    <!-- 邀请码 -->
-    <div class="card mt-4 p-5">
-      <h2 class="mb-3 text-sm font-semibold text-ink-900">账号分发 · 邀请码</h2>
-      <div class="flex flex-wrap items-end gap-2">
-        <div>
-          <label class="label">数量</label>
-          <input v-model.number="inviteForm.count" type="number" class="input w-20" />
-        </div>
-        <div>
-          <label class="label">配额(封/日)</label>
-          <input v-model.number="inviteForm.quota" type="number" class="input w-24" />
-        </div>
-        <div>
-          <label class="label">角色</label>
-          <select v-model="inviteForm.role" class="input w-24">
-            <option value="user">user</option>
-            <option value="admin">admin</option>
-          </select>
-        </div>
-        <div>
-          <label class="label">有效期(天)</label>
-          <input v-model.number="inviteForm.days" type="number" class="input w-20" />
-        </div>
-        <button class="btn-primary" @click="genInvite">生成</button>
-      </div>
-
-      <div class="mt-4 flex flex-wrap gap-2">
-        <button
-          v-for="i in invites"
-          :key="i.id"
-          class="group rounded-lg border border-sand-200 px-2.5 py-1 font-mono text-xs text-ink-700 hover:border-henna-300"
-          :title="`已用 ${i.used}/${i.max_use}`"
-          @click="copy(i.code)"
-        >
-          {{ i.code }}
-          <span class="ml-1 text-ink-500">{{ i.used }}/{{ i.max_use }}</span>
-          <span class="ml-1 text-henna-500 opacity-0 group-hover:opacity-100" @click.stop="removeInvite(i)">✕</span>
-        </button>
-        <span v-if="!invites.length" class="text-xs text-ink-500">暂无邀请码</span>
       </div>
     </div>
 

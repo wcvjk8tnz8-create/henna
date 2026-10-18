@@ -23,7 +23,9 @@ const result = ref<{ success: boolean; provider: string; error?: string; attempt
 
 onMounted(async () => {
   try {
-    addresses.value = await api.get<Address[]>('/mailbox');
+    // scope=mine：只列自己的地址。管理员默认会拿到全站地址，
+    // 那样发件人下拉里会出现别人的邮箱（后端现在也会拒绝，但选不到更干净）。
+    addresses.value = await api.get<Address[]>('/mailbox?scope=mine');
     if (addresses.value[0]) from.value = addresses.value[0].address;
     providers.value = await api.get<ProviderItem[]>('/provider');
 
@@ -124,7 +126,7 @@ async function send() {
           <select v-model="from" class="input">
             <option v-for="a in addresses" :key="a.id" :value="a.address">{{ a.address }}</option>
           </select>
-          <p v-if="!addresses.length" class="mt-1 text-xs text-clay-600">还没有可用地址，请先到「邮箱地址」创建</p>
+          <p v-if="!addresses.length" class="mt-1 text-xs text-clay-600">还没有可用地址，请先到「邮箱 → 邮箱地址」创建</p>
         </div>
         <div>
           <label class="label">发信服务商</label>

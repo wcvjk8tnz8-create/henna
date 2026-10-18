@@ -96,6 +96,17 @@ export function fmtTime(ts: number): string {
   return `${d.getMonth() + 1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
+/**
+ * 完整日期（含年）。
+ * fmtTime 在跨年后会把「去年 12/30」显示成 12/30，看不出是哪一年 ——
+ * 用在「注册于」这种场景会误导，所以单独给一个带年份的版本。
+ */
+export function fmtDate(ts: number): string {
+  const d = new Date(ts);
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}/${p(d.getMonth() + 1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
 export function fmtSize(n: number): string {
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;

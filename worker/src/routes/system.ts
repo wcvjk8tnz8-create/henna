@@ -242,6 +242,17 @@ export const initHandler = async (c: Context<{ Bindings: Env }>) => {
     /* 修复失败不影响初始化 */
   }
 
+  /*
+   * 清空现存邀请码。
+   * 邀请码页面独立成页时要求清掉旧数据 —— 旧码的 role / quota
+   * 和新的分发规则不一致，留着容易误用。只在初始化时执行一次。
+   */
+  try {
+    await exec(c.env.DB, 'DELETE FROM invite_code');
+  } catch {
+    /* 邀请码表不存在时忽略 */
+  }
+
   // 给已存在的账号补上「登录邮箱」作为发件地址（老数据升级用，幂等）
   try {
     const users = await qAll<{ id: number; email: string }>(

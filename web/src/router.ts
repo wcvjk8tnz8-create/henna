@@ -13,7 +13,7 @@ import { getToken } from './api';
  */
 
 /** admin 才能进的页面 */
-const ADMIN_ONLY = ['admin', 'analytics', 'system'];
+const ADMIN_ONLY = ['admin', 'analytics', 'system', 'mail', 'manage', 'invites', 'addresses', 'providers', 'rules', 'logs'];
 
 const routes = [
   {
@@ -28,14 +28,26 @@ const routes = [
       { path: '', name: 'inbox', component: () => import('./views/Inbox.vue') },
       { path: 'all', name: 'all-inbox', component: () => import('./views/AllInbox.vue'), meta: { admin: true } },
       { path: 'compose', name: 'compose', component: () => import('./views/Compose.vue') },
-      { path: 'addresses', name: 'addresses', component: () => import('./views/Addresses.vue'), meta: { admin: true } },
-      { path: 'providers', name: 'providers', component: () => import('./views/Providers.vue'), meta: { admin: true } },
-      { path: 'rules', name: 'rules', component: () => import('./views/Rules.vue'), meta: { admin: true } },
-      { path: 'logs', name: 'logs', component: () => import('./views/Logs.vue'), meta: { admin: true } },
-      { path: 'analytics', name: 'analytics', component: () => import('./views/Analytics.vue'), meta: { admin: true } },
-      { path: 'admin', name: 'admin', component: () => import('./views/Admin.vue'), meta: { admin: true } },
-      { path: 'system', name: 'system', component: () => import('./views/SystemSettings.vue'), meta: { admin: true } },
       { path: 'settings', name: 'settings', component: () => import('./views/Settings.vue') },
+
+      /*
+       * 管理向页面已合并：
+       *   /mail    = 邮箱地址 + 发信日志 + 分析
+       *   /manage  = 发信服务商 + 分发规则 + 用户与统计 + 系统设置
+       *   /invites = 邀请码（独立）
+       * 旧路径保留重定向，收藏夹和旧链接不会 404。
+       */
+      { path: 'mail', name: 'mail', component: () => import('./views/MailHub.vue'), meta: { admin: true } },
+      { path: 'manage', name: 'manage', component: () => import('./views/ManageHub.vue'), meta: { admin: true } },
+      { path: 'invites', name: 'invites', component: () => import('./views/Invites.vue'), meta: { admin: true } },
+
+      { path: 'addresses', redirect: '/mail?tab=addresses' },
+      { path: 'logs', redirect: '/mail?tab=logs' },
+      { path: 'analytics', redirect: '/mail?tab=analytics' },
+      { path: 'providers', redirect: '/manage?tab=providers' },
+      { path: 'rules', redirect: '/manage?tab=rules' },
+      { path: 'admin', redirect: '/manage?tab=admin' },
+      { path: 'system', redirect: '/manage?tab=system' },
     ],
   },
   // 兜底：未知路径回首页（会再经守卫判断登录态）

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { api } from '../api';
-import { fmtTime, logout, store, toast } from '../store';
+import { fmtDate, fmtTime, logout, store, toast } from '../store';
 
 const me = computed(() => store.me);
 const quotaPct = computed(() => (me.value ? Math.min(100, Math.round((me.value.used / Math.max(1, me.value.quota)) * 100)) : 0));
@@ -34,7 +34,9 @@ const curl = computed(() => `curl -X POST ${location.origin}/api/send \\
         </div>
         <div>
           <div class="text-sm font-semibold text-ink-900">{{ me?.email }}</div>
-          <div class="text-xs text-ink-500">{{ me?.role }} · 注册于 {{ me ? fmtTime(me.id && Date.now()) : '' }}</div>
+          <div class="text-xs text-ink-500">
+            {{ me?.role }}<template v-if="me?.created_at"> · 注册于 {{ fmtDate(me.created_at) }}</template>
+          </div>
         </div>
       </div>
 

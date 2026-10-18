@@ -17,15 +17,30 @@ interface AddressRow {
   created_at: number;
 }
 
+/**
+ * 地址列表。
+ *
+ * 默认管理员看全站（管理页要用），普通用户看自己的。
+ * `scope=mine` → **任何人（含管理员）都只看自己的**，
+ * 写信页的「发件人」下拉就用这个，避免选到别人的地址。
+ */
 mailbox.get('/', authRequired, async (c) => {
   const user = c.get('user');
-  const rows =
-    user.role === 'admin'
-      ? await qAll<AddressRow & { email?: string }>(
-          c.env.DB,
-          `SELECT a.*, u.email AS owner FROM mail_address a LEFT JOIN user u ON u.id = a.user_id ORDER BY a.id DESC LIMIT 500`,
-        )
-      : await qAll<AddressRow>(c.env.DB, 'SELECT * FROM mail_address WHERE user_id = ? ORDER BY id DESC', user.id);
+  const mine = c.req.query('scope') === 'mine';
+
+  if (mine || user.role !== 'admin') {
+    const rows = await qAll<AddressRow>(
+      c.env.DB,
+      'SELECT * FROM mail_address WHERE user_id = ? ORDER BY id DESC LIMIT 500',
+      user.id,
+    );
+    return c.json(ok(rows));
+  }
+
+  const rows = await qAll<AddressRow & { email?: string }>(
+    c.env.DB,
+    'SELECT a.*, u.email AS owner FROM mail_address a LEFT JOIN user u ON u.id = a.user_id ORDER BY a.id DESC LIMIT 500',
+  );
   return c.json(ok(rows));
 });
 

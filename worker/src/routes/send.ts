@@ -5,7 +5,7 @@ import { authRequired, type AppEnv } from '../middleware/auth';
 import { qAll, qOne, exec } from '../db/query';
 import { dispatchMail, type ProviderRow } from '../providers';
 import type { Attachment, OutgoingMail } from '../providers/types';
-import { parseDomains, htmlToText, clamp } from '../lib/util';
+import { htmlToText, clamp } from '../lib/util';
 
 const send = new Hono<{ Bindings: Env; Variables: AppEnv['Variables'] }>();
 
@@ -26,21 +26,18 @@ async function guard(env: Env, userId: number, role: string, from: string, count
   const addr = /<([^>]+)>|([^\s<>]+@[^\s<>]+)/.exec(from ?? '')?.[1] ?? (from ?? '');
   if (!addr.includes('@')) throw new HttpError('发件地址不合法');
 
-  if (role !== 'admin') {
-    const owned = await qOne<{ id: number }>(
-      env.DB,
-      'SELECT id FROM mail_address WHERE address = ? AND user_id = ?',
-      addr,
-      userId,
-    );
-    if (!owned) throw new HttpError(`无权使用发件地址 ${addr}`);
-  } else {
-    const domains = parseDomains(env);
-    const domain = addr.split('@')[1] ?? '';
-    if (domains.length && !domains.includes(domain)) {
-      throw new HttpError(`发件域名 ${domain} 不在托管域名列表内`);
-    }
-  }
+  /*
+   * 发件地址必须**属于本人**，管理员也不例外。
+   * 之前 admin 走的是另一条分支：只要域名在托管列表里就能发，
+   * 于是可以用任何人的地址发信。现在统一按归属校验。
+   */
+  const owned = await qOne<{ id: number }>(
+    env.DB,
+    'SELECT id FROM mail_address WHERE address = ? AND user_id = ?',
+    addr,
+    userId,
+  );
+  if (!owned) throw new HttpError(`无权使用发件地址 ${addr}：只能从自己的邮箱地址发信`);
 
   const u = await qOne<{ quota: number; used: number }>(env.DB, 'SELECT quota, used FROM user WHERE id = ?', userId);
   if (!u) throw new HttpError('用户不存在', 401);

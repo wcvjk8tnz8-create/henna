@@ -55,6 +55,8 @@ export interface Me {
   quota: number;
   used: number;
   api_key: string | null;
+  /** 注册时间。老数据可能为 null（/me 之前不返回这个字段） */
+  created_at?: number | null;
 }
 export interface PublicConfig {
   appName: string;
