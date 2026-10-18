@@ -26,6 +26,8 @@ export const PUBLIC_KEYS = [
   'site_notice_enabled',
   'site_notice_content',
   'login_bg',
+  'login_bg_mode',
+  'login_bg_api',
   'login_opacity',
   'hide_login_domain',
   'allow_register',
@@ -49,7 +51,10 @@ export const DEFAULT_SETTINGS: Record<string, string> = {
   multi_address_limit: '5',
   hide_login_domain: 'false',
   // ── 个性化
+  // builtin = 内置晴空渐变 / custom = 自定义图片 / api = 每日一图接口
+  login_bg_mode: 'builtin',
   login_bg: '',
+  login_bg_api: '',
   login_opacity: '0.92',
   // ── 人机验证
   turnstile_enabled: 'false',

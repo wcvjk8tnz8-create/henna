@@ -165,20 +165,44 @@ onMounted(load);
       </Section>
 
       <!-- ── 个性化 ───────────────────────────────── -->
-      <Section title="个性化" desc="登录页背景与遮罩">
-        <label class="label">登录背景图</label>
-        <div class="flex flex-wrap items-center gap-2">
-          <input v-model="s.login_bg" class="input flex-1" placeholder="在线图片链接，或点击下方上传" />
-          <input ref="fileInput" type="file" accept="image/*" class="hidden" @change="onPickFile" />
-          <button class="btn-ghost" :disabled="bgUploading" @click="fileInput?.click()">
-            {{ bgUploading ? '上传中…' : '本地上传' }}
-          </button>
+      <Section title="个性化" desc="登录页左半边的背景与右侧面板样式">
+        <div class="mb-3">
+          <label class="label">登录背景</label>
+          <select v-model="s.login_bg_mode" class="input">
+            <option value="builtin">内置晴空（默认，无需联网）</option>
+            <option value="custom">自定义图片（链接或上传）</option>
+            <option value="api">每日一图（外部接口）</option>
+          </select>
         </div>
-        <div v-if="s.login_bg" class="mt-3 overflow-hidden rounded-lg border border-sand-200">
-          <img :src="s.login_bg" alt="登录背景预览" class="h-32 w-full object-cover" />
+
+        <template v-if="s.login_bg_mode === 'custom'">
+          <label class="label">图片地址</label>
+          <div class="flex flex-wrap items-center gap-2">
+            <input v-model="s.login_bg" class="input flex-1" placeholder="在线图片链接，或点击下方上传" />
+            <input ref="fileInput" type="file" accept="image/*" class="hidden" @change="onPickFile" />
+            <button class="btn-ghost" :disabled="bgUploading" @click="fileInput?.click()">
+              {{ bgUploading ? '上传中…' : '本地上传' }}
+            </button>
+          </div>
+          <div v-if="s.login_bg" class="mt-3 overflow-hidden rounded-lg border border-sand-200">
+            <img :src="s.login_bg" alt="登录背景预览" class="h-32 w-full object-cover" />
+          </div>
+          <p class="mt-1.5 text-[11px] text-ink-500">
+            上传优先写入对象存储；未配置存储时小图（≤512KB）会内联保存。加载失败会自动回退到内置晴空。
+          </p>
+        </template>
+
+        <div v-else-if="s.login_bg_mode === 'api'" class="space-y-1.5">
+          <label class="label">图片接口地址</label>
+          <input v-model="s.login_bg_api" class="input" placeholder="https://..." />
+          <p class="text-[11px] leading-relaxed text-ink-500">
+            返回一张图片的公开接口即可，每次刷新都会重新请求。
+            注意：这会向第三方暴露访客 IP，介意的话请用前两种。
+          </p>
         </div>
+
         <div class="mt-4">
-          <label class="label">登录卡片不透明度 · {{ opacityPercent }}%</label>
+          <label class="label">右侧面板不透明度 · {{ opacityPercent }}%</label>
           <input v-model.number="opacityPercent" type="range" min="40" max="100" class="w-full accent-henna-500" />
         </div>
       </Section>

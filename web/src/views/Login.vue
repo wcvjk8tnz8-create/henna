@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { api, setToken, type Me } from '../api';
 import { loadConfig, loadMe, store, toast } from '../store';
+import CloudSky from '../components/CloudSky.vue';
 
 const router = useRouter();
 const route = useRoute();
@@ -15,19 +16,36 @@ const turnstileToken = ref('');
 const showNotice = ref(false);
 
 const st = computed(() => store.config?.settings ?? {});
-const bg = computed(() => st.value.login_bg || '');
+const bgMode = computed(() => st.value.login_bg_mode || 'builtin');
 const opacity = computed(() => Number(st.value.login_opacity || 0.92));
 
-/** 隐藏登录域名：邮箱输入框不给域名提示 */
+/** 自定义图片 / 每日一图 的最终 URL */
+const bgUrl = computed(() => {
+  if (bgMode.value === 'custom') return st.value.login_bg || '';
+  if (bgMode.value === 'api') return st.value.login_bg_api || '';
+  return '';
+});
+
+const useImage = computed(() => bgMode.value !== 'builtin' && !!bgUrl.value);
+const useSky = computed(() => !useImage.value);
+
+/** 图片加载失败时自动回退到内置晴空，避免白屏 */
+const imgFailed = ref(false);
+watch(bgUrl, () => { imgFailed.value = false; });
+const showSky = computed(() => useSky.value || imgFailed.value);
+
 const emailPlaceholder = computed(() =>
   st.value.hide_login_domain === 'true' ? '请输入邮箱' : 'you@example.com',
 );
 
-const oauthList = computed(() => [
-  { key: 'github', label: 'GitHub', on: st.value.oauth_github_enabled === 'true' },
-  { key: 'google', label: 'Google', on: st.value.oauth_google_enabled === 'true' },
-  { key: 'linuxdo', label: 'LinuxDo', on: st.value.oauth_linuxdo_enabled === 'true' },
-].filter((x) => x.on));
+const oauthList = computed(
+  () =>
+    [
+      { key: 'github', label: 'GitHub', on: st.value.oauth_github_enabled === 'true' },
+      { key: 'google', label: 'Google', on: st.value.oauth_google_enabled === 'true' },
+      { key: 'linuxdo', label: 'LinuxDo', on: st.value.oauth_linuxdo_enabled === 'true' },
+    ].filter((x) => x.on),
+);
 
 const needTurnstile = computed(() => {
   if (st.value.turnstile_enabled !== 'true') return false;
@@ -35,7 +53,7 @@ const needTurnstile = computed(() => {
   return mode.value === 'login' ? st.value.turnstile_login === 'true' : st.value.turnstile_register === 'true';
 });
 
-/* ── Turnstile 挂载 ────────────────────────────────── */
+/* ── Turnstile ─────────────────────────────────────── */
 const tsEl = ref<HTMLDivElement | null>(null);
 let tsWidgetId: string | null = null;
 
@@ -70,9 +88,7 @@ function mountTurnstile() {
 
 onMounted(async () => {
   await loadConfig();
-  if (st.value.site_notice_enabled === 'true' && st.value.site_notice_content) {
-    showNotice.value = true;
-  }
+  if (st.value.site_notice_enabled === 'true' && st.value.site_notice_content) showNotice.value = true;
   mountTurnstile();
 });
 
@@ -111,45 +127,35 @@ function oauthLogin(key: string) {
 </script>
 
 <template>
-  <div class="relative grid min-h-full place-items-center px-4 py-10">
-    <!-- 登录背景 -->
-    <div
-      v-if="bg"
-      class="fixed inset-0 -z-10 bg-cover bg-center"
-      :style="{ backgroundImage: `url(${bg})` }"
-    />
-    <div v-if="bg" class="fixed inset-0 -z-10 bg-sand-900/20" />
-    <div v-else class="fixed inset-0 -z-10 bg-sand-50" />
-
-    <!-- 网站公告 -->
-    <div
-      v-if="showNotice"
-      class="fixed inset-0 z-50 grid place-items-center bg-ink-900/40 p-4"
-      @click.self="showNotice = false"
-    >
-      <div class="card max-w-md p-5">
-        <h2 class="mb-2 text-sm font-semibold text-ink-900">站点公告</h2>
-        <p class="whitespace-pre-wrap text-sm leading-relaxed text-ink-700">{{ st.site_notice_content }}</p>
-        <button class="btn-primary mt-4 w-full" @click="showNotice = false">知道了</button>
-      </div>
+  <div class="relative flex min-h-full bg-white">
+    <!-- 左：背景（内置晴空 / 自定义图片 / 每日一图） -->
+    <div class="pointer-events-none fixed inset-0">
+      <CloudSky v-if="showSky" :dim="0" />
+      <img v-else :src="bgUrl" alt="" class="h-full w-full object-cover" @error="imgFailed = true" />
+      <!-- 移动端整屏压白保证可读；桌面端只把右侧面板区域压成纯白 -->
+      <div class="absolute inset-0 md:hidden" :style="{ backgroundColor: `rgba(255,255,255,${Math.max(opacity, 0.85)})` }" />
+      <div
+        class="absolute inset-y-0 right-0 hidden w-[46%] md:block"
+        :style="{ backgroundColor: `rgba(255,255,255,${opacity})` }"
+      />
     </div>
 
-    <div class="w-full max-w-sm">
-      <div class="mb-6 flex items-center justify-center gap-3">
-        <div class="grid h-11 w-11 place-items-center rounded-xl bg-henna-500 text-white shadow-sm">
-          <svg viewBox="0 0 24 24" class="h-6 w-6" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M3 7h18v10H3z" />
-            <path d="M3 7l9 6 9-6" />
-          </svg>
+    <!-- 右：登录面板 -->
+    <div
+      class="relative flex min-h-full w-full items-center justify-center px-5 py-10 md:ml-auto md:w-[46%] md:justify-center md:px-10"
+    >
+      <div class="w-full max-w-sm">
+        <!-- Logo -->
+        <div class="mb-7 flex items-center gap-3 md:mb-9">
+          <img src="/logo-512.png" alt="Henna Mail" class="h-11 w-auto md:h-14" />
         </div>
-        <div class="text-left leading-tight">
-          <h1 class="text-lg font-semibold text-ink-900">{{ store.config?.appName ?? 'Henna Mail' }}</h1>
-          <p class="text-xs text-ink-500">Cloudflare Workers · 邮箱分发系统</p>
-        </div>
-      </div>
 
-      <div class="card p-6" :style="bg ? { backgroundColor: `rgba(255,255,255,${opacity})`, backdropFilter: 'blur(8px)' } : {}">
-        <div class="mb-5 flex gap-1 rounded-lg bg-sand-100 p-1">
+        <h1 class="text-xl font-semibold tracking-tight text-ink-900 md:text-2xl">
+          {{ mode === 'login' ? '欢迎回来' : '创建账号' }}
+        </h1>
+        <p class="mt-1.5 text-sm text-ink-500">输入账号信息以开始使用邮箱系统</p>
+
+        <div class="mt-6 flex gap-1 rounded-lg bg-sand-100 p-1">
           <button
             class="flex-1 rounded-md px-3 py-1.5 text-sm font-medium transition"
             :class="mode === 'login' ? 'bg-white text-ink-900 shadow-sm' : 'text-ink-500'"
@@ -167,14 +173,20 @@ function oauthLogin(key: string) {
           </button>
         </div>
 
-        <form class="space-y-3.5" @submit.prevent="submit">
+        <form class="mt-5 space-y-4" @submit.prevent="submit">
           <div>
             <label class="label">邮箱</label>
             <input v-model="email" class="input" type="email" :placeholder="emailPlaceholder" autocomplete="username" />
           </div>
           <div>
             <label class="label">密码</label>
-            <input v-model="password" class="input" type="password" placeholder="至少 6 位" autocomplete="current-password" />
+            <input
+              v-model="password"
+              class="input"
+              type="password"
+              placeholder="至少 6 位"
+              autocomplete="current-password"
+            />
           </div>
           <div v-if="mode === 'register'">
             <label class="label">邀请码（若站点要求）</label>
@@ -183,37 +195,55 @@ function oauthLogin(key: string) {
 
           <div v-show="needTurnstile" ref="tsEl" class="flex justify-center"></div>
 
-          <button class="btn-primary w-full" :disabled="loading">
+          <button class="btn-primary w-full !py-2.5" :disabled="loading">
             {{ loading ? '处理中…' : mode === 'login' ? '登录' : '注册' }}
           </button>
         </form>
 
-        <div v-if="oauthList.length" class="mt-4">
-          <div class="mb-2 flex items-center gap-2">
+        <p class="mt-4 text-center text-sm text-ink-500">
+          {{ mode === 'login' ? '还没有账号？' : '已有账号？' }}
+          <button
+            class="font-medium text-henna-600 hover:underline"
+            @click="switchMode(mode === 'login' ? 'register' : 'login')"
+          >
+            {{ mode === 'login' ? '创建账号' : '去登录' }}
+          </button>
+        </p>
+
+        <div v-if="oauthList.length" class="mt-5">
+          <div class="mb-2.5 flex items-center gap-2">
             <span class="h-px flex-1 bg-sand-200" />
             <span class="text-[11px] text-ink-500">或使用第三方登录</span>
             <span class="h-px flex-1 bg-sand-200" />
           </div>
           <div class="flex flex-wrap gap-2">
-            <button
-              v-for="o in oauthList"
-              :key="o.key"
-              class="btn-ghost flex-1"
-              @click="oauthLogin(o.key)"
-            >
+            <button v-for="o in oauthList" :key="o.key" class="btn-ghost flex-1" @click="oauthLogin(o.key)">
               {{ o.label }}
             </button>
           </div>
         </div>
 
-        <p v-if="mode === 'register'" class="mt-4 text-center text-xs text-ink-500">
+        <p v-if="mode === 'register'" class="mt-5 text-center text-xs text-ink-500">
           首个注册的账号将自动成为管理员
         </p>
-      </div>
 
-      <p class="mt-5 text-center text-[11px] text-ink-500">
-        Workers · D1 · KV · R2 · 多服务商发信
-      </p>
+        <p class="mt-8 text-center text-[11px] text-ink-400">
+          Workers · D1 · KV · R2 · 多服务商发信
+        </p>
+      </div>
+    </div>
+
+    <!-- 网站公告 -->
+    <div
+      v-if="showNotice"
+      class="fixed inset-0 z-50 grid place-items-center bg-ink-900/40 p-4"
+      @click.self="showNotice = false"
+    >
+      <div class="card max-w-md p-5">
+        <h2 class="mb-2 text-sm font-semibold text-ink-900">站点公告</h2>
+        <p class="whitespace-pre-wrap text-sm leading-relaxed text-ink-700">{{ st.site_notice_content }}</p>
+        <button class="btn-primary mt-4 w-full" @click="showNotice = false">知道了</button>
+      </div>
     </div>
   </div>
 </template>

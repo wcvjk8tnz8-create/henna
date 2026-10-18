@@ -42,12 +42,7 @@ const paths: Record<string, string> = {
     <!-- 侧边栏（桌面） -->
     <aside class="hidden w-60 shrink-0 flex-col border-r border-sand-200 bg-white md:flex">
       <div class="flex items-center gap-2.5 px-5 py-5">
-        <div class="grid h-9 w-9 place-items-center rounded-lg bg-henna-500 text-white">
-          <svg viewBox="0 0 24 24" class="h-5 w-5" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M3 7h18v10H3z" />
-            <path d="M3 7l9 6 9-6" />
-          </svg>
-        </div>
+        <img src="/logo-512.png" alt="Henna Mail" class="h-9 w-auto" />
         <div class="leading-tight">
           <div class="text-sm font-semibold text-ink-900">{{ store.config?.appName ?? 'Henna Mail' }}</div>
           <div class="text-[11px] text-ink-500">邮箱分发系统</div>
