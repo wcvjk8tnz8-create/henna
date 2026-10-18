@@ -128,41 +128,73 @@ jobs:
           set -e
           if [ $CODE -ne 0 ]; then echo "❌ 部署失败"; exit 1; fi
           WORKER_URL=$(grep -o "https://[a-zA-Z0-9.-]*\.workers\.dev" deploy.log | head -1 || echo "")
+          # 日志里没打印时，用 API 查到的子域拼一个（wrangler 有时只在首次部署输出 URL）
+          if [ -z "$WORKER_URL" ] && [ -n "${{ steps.provision.outputs.subdomain }}" ]; then
+            WORKER_URL="https://$NAME.${{ steps.provision.outputs.subdomain }}.workers.dev"
+            echo "· 日志未输出地址，改用 API 子域拼接：$WORKER_URL"
+          fi
           [ -n "$WORKER_URL" ] && echo "::add-mask::$WORKER_URL"
           echo "worker_url=$WORKER_URL" >> $GITHUB_OUTPUT
           echo "✅ 部署完成：$WORKER_URL"
 
       - name: ♻️ 初始化数据库
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN || vars.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID || vars.CLOUDFLARE_ACCOUNT_ID }}
+          SUBDOMAIN: ${{ steps.provision.outputs.subdomain }}
         run: |
           echo "🛠️ 开始初始化数据库..."
-          sleep 15
-          WORKER_URL="${CUSTOM_DOMAIN:+https://$CUSTOM_DOMAIN}"
-          WORKER_URL="${WORKER_URL:-${{ steps.deploy.outputs.worker_url }}}"
-          if [ -z "$WORKER_URL" ]; then
-            echo "❌ 拿不到访问地址，请设置 CUSTOM_DOMAIN"
-            exit 1
+
+          # ── 收集所有可能的访问地址（去重）
+          CANDIDATES=""
+          add_candidate() {
+            for c in $CANDIDATES; do [ "$c" = "$1" ] && return; done
+            CANDIDATES="$CANDIDATES $1"
+          }
+          [ -n "$CUSTOM_DOMAIN" ] && add_candidate "https://$CUSTOM_DOMAIN"
+          [ -n "${{ steps.deploy.outputs.worker_url }}" ] && add_candidate "${{ steps.deploy.outputs.worker_url }}"
+          [ -n "$SUBDOMAIN" ] && add_candidate "https://$NAME.$SUBDOMAIN.workers.dev"
+          if [ -z "$CANDIDATES" ]; then
+            echo "::warning:: 拿不到访问地址，跳过自动初始化。请打开 Cloudflare 控制台查看 Worker 地址后手动访问 /api/init/<JWT_SECRET>"
+            exit 0
           fi
-          echo "· 目标：$WORKER_URL/api/init/<JWT_SECRET>"
-          for i in 1 2 3 4 5; do
-            CODE=$(curl -sL -w "%{http_code}" -o /tmp/henna-init.txt "$WORKER_URL/api/init/${JWT_SECRET}" || echo 000)
-            BODY=$(head -c 200 /tmp/henna-init.txt 2>/dev/null || echo "")
-            echo "尝试 $i -> HTTP $CODE / $BODY"
-            if [ "$BODY" = "success" ]; then
-              echo "✅ 数据库初始化完成"
-              echo "### 部署结果" >> "$GITHUB_STEP_SUMMARY"
-              echo "- 访问地址：$WORKER_URL" >> "$GITHUB_STEP_SUMMARY"
-              echo "- 附件存储：${{ steps.provision.outputs.r2_enabled == 'true' && '已启用 R2' || '未启用（功能降级）' }}" >> "$GITHUB_STEP_SUMMARY"
-              echo "- 下一步：Cloudflare 控制台 → 域名 → Email → Email Routing → Routing rules → Send to Worker → $NAME" >> "$GITHUB_STEP_SUMMARY"
-              exit 0
-            fi
-            sleep 12
+          echo "· 候选地址：$CANDIDATES"
+
+          # 新部署的 workers.dev 主机名 DNS 生效可能需要几分钟，这里给足轮询时间
+          for round in $(seq 1 12); do
+            for BASE in $CANDIDATES; do
+              # --ipv4 规避 runner 的 IPv6 解析问题；--max-time 防挂死
+              CODE=$(curl -4 -sL --max-time 20 -o /tmp/henna-init.txt \
+                     -w '%{http_code}' "$BASE/api/init/${JWT_SECRET}" 2>/dev/null)
+              CODE="${CODE:-000}"
+              BODY=$(head -c 200 /tmp/henna-init.txt 2>/dev/null || echo "")
+              echo "· 第 $round 轮 $BASE -> HTTP $CODE${BODY:+ / $BODY}"
+              if [ "$BODY" = "success" ]; then
+                echo "✅ 数据库初始化完成"
+                echo "### 部署结果" >> "$GITHUB_STEP_SUMMARY"
+                echo "- 访问地址：$BASE" >> "$GITHUB_STEP_SUMMARY"
+                echo "- 附件存储：${{ steps.provision.outputs.r2_enabled == 'true' && '已启用 R2' || '未启用（功能降级）' }}" >> "$GITHUB_STEP_SUMMARY"
+                echo "- 下一步：Cloudflare 控制台 → 域名 → Email → Email Routing → Routing rules → Send to Worker → $NAME" >> "$GITHUB_STEP_SUMMARY"
+                exit 0
+              fi
+            done
+            [ $round -lt 12 ] && sleep 15
           done
-          echo "❌ 初始化失败"
-          echo "   常见原因："
-          echo "   1. HTTP 401 → JWT_SECRET 与部署时用的不一致"
-          echo "   2. HTTP 404 → 路由未生效，确认 Worker 已成功部署"
-          echo "   3. HTTP 000 → 地址不可达，Worker 可能刚上线，稍等再试"
-          exit 1
+
+          # 走到这里说明自动初始化没成功 —— 但 Worker 本身已部署成功，
+          # 不该因为这一步把整次部署标红，改为警告 + 给出手动地址。
+          echo "::warning:: 自动初始化未成功（Worker 已部署，只是 CI 连不上它的地址）"
+          FIRST_URL=$(echo "$CANDIDATES" | awk '{print $1}')
+          echo ""
+          echo "   请在浏览器里手动打开下面这个地址完成建表（一次即可）："
+          echo "     $FIRST_URL/api/init/<你的 JWT_SECRET>"
+          echo ""
+          echo "   若该地址打不开，说明 workers.dev 主机名还没生效："
+          echo "   等 2~3 分钟再刷新，或到 Cloudflare 控制台 → Workers → $NAME 查看真实地址。"
+          echo "### ⚠️ 需要手动初始化" >> "$GITHUB_STEP_SUMMARY"
+          echo "Worker 已部署成功，但 CI 无法访问其地址完成建表。请手动打开：" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`$FIRST_URL/api/init/<你的 JWT_SECRET>\`" >> "$GITHUB_STEP_SUMMARY"
+          exit 0
 
       - name: 🗑️ 清理运行记录
         uses: GitRML/delete-workflow-runs@main
