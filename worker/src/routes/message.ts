@@ -4,6 +4,7 @@ import { ok, HttpError } from '../lib/http';
 import { authRequired, type AppEnv } from '../middleware/auth';
 import { qAll, qOne, exec } from '../db/query';
 import { clamp } from '../lib/util';
+import { getAllSettings, isTrue } from '../db/settings';
 
 const message = new Hono<{ Bindings: Env; Variables: AppEnv['Variables'] }>();
 
@@ -21,6 +22,10 @@ interface MessageRow {
   html_body: string | null;
   is_read: number;
   is_star: number;
+  is_spam: number;
+  spam_score: number;
+  spam_reason: string;
+  spam_source: string;
   size: number;
   created_at: number;
 }
@@ -28,37 +33,44 @@ interface MessageRow {
 /**
  * 列表。
  *
- * 默认**只看自己的** —— 管理员也一样。之前管理员会看到全站所有人的信，
- * 这既不符合「收件箱」的直觉，也让管理员自己找不到自己的信。
- * 要看全部走 scope=all（仅管理员，且只在单独的「全部收件箱」页用）。
+ * 默认**只看自己的** —— 管理员也一样。要看全部走 scope=all（仅管理员）。
+ * box=spam 是垃圾箱视图（收信里被判为垃圾的那些）。
+ * 收件箱默认隐藏垃圾邮件，由 spam_hide_inbox 控制，避免正常列表被污染。
  */
 message.get('/', authRequired, async (c) => {
   const user = c.get('user');
   const boxRaw = c.req.query('box') ?? 'in';
-  const box = boxRaw === 'out' ? 'out' : boxRaw === 'draft' ? 'draft' : 'in';
+  const box = (['in', 'out', 'draft', 'spam'] as const).includes(boxRaw as never)
+    ? (boxRaw as 'in' | 'out' | 'draft' | 'spam')
+    : 'in';
   const q = (c.req.query('q') ?? '').trim();
   const limit = clamp(Number(c.req.query('limit') ?? 50), 1, 200);
   const offset = clamp(Number(c.req.query('offset') ?? 0), 0, 100000);
 
   // scope=all 仅管理员可用；普通用户传了也无效（按自己的返回）
   const all = c.req.query('scope') === 'all' && user.role === 'admin';
+  const p = all ? 'm.' : '';
+  const direction = box === 'spam' ? 'in' : box;
 
   let sql = all
-    ? 'SELECT m.id, m.user_id, m.address_id, m.direction, m.from_addr, m.from_name, m.to_addr, m.subject, m.is_read, m.is_star, m.size, m.created_at, u.email AS owner FROM mail_message m LEFT JOIN user u ON u.id = m.user_id WHERE m.direction = ?'
-    : 'SELECT id, user_id, address_id, direction, from_addr, from_name, to_addr, subject, is_read, is_star, size, created_at FROM mail_message WHERE direction = ? AND user_id = ?';
-  const args: unknown[] = [box];
+    ? `SELECT m.id, m.user_id, m.address_id, m.direction, m.from_addr, m.from_name, m.to_addr, m.subject, m.is_read, m.is_star, m.is_spam, m.spam_score, m.spam_reason, m.spam_source, m.size, m.created_at, u.email AS owner FROM mail_message m LEFT JOIN user u ON u.id = m.user_id WHERE m.direction = ?`
+    : `SELECT id, user_id, address_id, direction, from_addr, from_name, to_addr, subject, is_read, is_star, is_spam, spam_score, spam_reason, spam_source, size, created_at FROM mail_message WHERE direction = ? AND user_id = ?`;
+  const args: unknown[] = [direction];
   if (!all) args.push(user.id);
 
-  if (c.req.query('star') === '1') sql += all ? ' AND m.is_star = 1' : ' AND is_star = 1';
+  if (box === 'spam') {
+    sql += ` AND ${p}is_spam = 1`;
+  } else if (box === 'in' && c.req.query('include_spam') !== '1') {
+    const st = await getAllSettings(c.env.DB);
+    if (isTrue(st.spam_hide_inbox)) sql += ` AND ${p}is_spam = 0`;
+  }
+
+  if (c.req.query('star') === '1') sql += ` AND ${p}is_star = 1`;
   if (q) {
-    sql += all
-      ? ' AND (m.subject LIKE ? OR m.from_addr LIKE ? OR m.to_addr LIKE ?)'
-      : ' AND (subject LIKE ? OR from_addr LIKE ? OR to_addr LIKE ?)';
+    sql += ` AND (${p}subject LIKE ? OR ${p}from_addr LIKE ? OR ${p}to_addr LIKE ?)`;
     args.push(`%${q}%`, `%${q}%`, `%${q}%`);
   }
-  sql += all
-    ? ' ORDER BY m.created_at DESC LIMIT ? OFFSET ?'
-    : ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
+  sql += ` ORDER BY ${p}created_at DESC LIMIT ? OFFSET ?`;
   args.push(limit, offset);
 
   const rows = await qAll<MessageRow & { owner?: string }>(c.env.DB, sql, ...args);
@@ -110,6 +122,27 @@ message.post('/:id/star', authRequired, async (c) => {
   const { star } = (await c.req.json().catch(() => ({}))) as { star?: number };
   await exec(c.env.DB, 'UPDATE mail_message SET is_star = ? WHERE id = ?', star ? 1 : 0, id);
   return c.json(ok({ updated: true }));
+});
+
+/**
+ * 手动标记垃圾 / 纠正误判。
+ * 用户点「不是垃圾」会把 is_spam 清 0 并留痕，AI 下次仍会重新判，
+ * 但这条记录本身不会被再次自动改动。
+ */
+message.post('/:id/spam', authRequired, async (c) => {
+  const id = Number(c.req.param('id'));
+  await assertOwn(c, id);
+  const { spam } = (await c.req.json().catch(() => ({}))) as { spam?: number | boolean };
+  const yes = spam === 1 || spam === true;
+  await exec(
+    c.env.DB,
+    'UPDATE mail_message SET is_spam = ?, spam_reason = ?, spam_source = ? WHERE id = ?',
+    yes ? 1 : 0,
+    yes ? '手动标记为垃圾' : '手动纠正为正常',
+    'user',
+    id,
+  );
+  return c.json(ok({ updated: true, is_spam: yes ? 1 : 0 }));
 });
 
 message.delete('/:id', authRequired, async (c) => {

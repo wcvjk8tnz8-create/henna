@@ -39,6 +39,10 @@ CREATE TABLE IF NOT EXISTS mail_message (
   html_body  TEXT,
   is_read    INTEGER NOT NULL DEFAULT 0,
   is_star    INTEGER NOT NULL DEFAULT 0,
+  is_spam    INTEGER NOT NULL DEFAULT 0,
+  spam_score REAL NOT NULL DEFAULT 0,
+  spam_reason TEXT NOT NULL DEFAULT '',
+  spam_source TEXT NOT NULL DEFAULT '',
   size       INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL
 );

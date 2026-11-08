@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
-import { api, type SettingsMap, type StorageStatus } from '../api';
+import { api, type AiStatus, type AiTestResult, type SettingsMap, type StorageStatus } from '../api';
 import { store, toast } from '../store';
 import Toggle from '../components/Toggle.vue';
 import Section from '../components/Section.vue';
@@ -42,6 +42,35 @@ const tg = flag('push_telegram_enabled');
 const wh = flag('push_webhook_enabled');
 const fwd = flag('push_forward_enabled');
 const aiEnabled = flag('ai_enabled');
+const spamEnabled = flag('spam_enabled');
+const spamSkipPush = flag('spam_skip_push');
+const spamHideInbox = flag('spam_hide_inbox');
+
+/* ── Workers AI 垃圾侦测 ─────────────────────────────── */
+const aiStatus = ref<AiStatus | null>(null);
+const aiTesting = ref(false);
+const aiTest = ref<AiTestResult | null>(null);
+const testMail = ref({
+  from: 'promo@deals.example',
+  subject: 'Congratulations! You have WON a FREE gift!!!',
+  text: 'Act now, limited time offer. Click here to claim your prize. 100% free, guaranteed!',
+});
+
+async function loadAiStatus() {
+  aiStatus.value = await api.get<AiStatus>('/system/ai/status').catch(() => null);
+}
+
+async function runAiTest() {
+  aiTesting.value = true;
+  try {
+    aiTest.value = await api.post<AiTestResult>('/system/ai/test', testMail.value);
+    await loadAiStatus();
+  } catch (e) {
+    toast((e as Error).message, 'err');
+  } finally {
+    aiTesting.value = false;
+  }
+}
 
 const isAdmin = computed(() => store.me?.role === 'admin');
 
@@ -91,6 +120,7 @@ async function load() {
     syncTheme();
     if (isAdmin.value) {
       storage.value = await api.get<StorageStatus>('/system/storage').catch(() => null);
+      await loadAiStatus();
     }
   } catch (e) {
     toast((e as Error).message, 'err');
@@ -120,6 +150,7 @@ async function save(keys?: string[]) {
     toast('已保存', 'ok');
     if (keys?.some((k) => k.startsWith('storage_') || k.startsWith('s3_'))) {
       storage.value = await api.get<StorageStatus>('/system/storage').catch(() => null);
+      await loadAiStatus();
     }
   } catch (e) {
     toast((e as Error).message, 'err');
@@ -576,8 +607,94 @@ onMounted(load);
         </div>
       </Section>
 
-      <!-- ── Workers AI ───────────────────────────── -->
-      <Section title="Workers AI" desc="用 AI 识别登录验证码图片的内容">
+      <!-- ── Workers AI · 垃圾邮件侦测 ─────────────────── -->
+      <Section title="Workers AI · 垃圾邮件侦测" desc="收信时用 Cloudflare Workers AI 分类；AI 不可用时自动回退到启发式规则，不影响收信">
+        <!-- 运行状态 -->
+        <div class="mb-4 rounded-card border border-sand-200 bg-sand-50 p-3 text-xs">
+          <div class="flex flex-wrap items-center gap-2">
+            <span
+              class="chip"
+              :class="aiStatus?.binding ? 'chip-ok' : aiStatus?.rest ? 'chip-warn' : 'chip-plain'"
+            >
+              {{ aiStatus?.mode ?? '检测中…' }}
+            </span>
+            <span v-if="aiStatus" class="text-ink-500">模型 {{ aiStatus.model }}</span>
+            <span v-if="aiStatus" class="text-ink-500">阈值 {{ Math.round(aiStatus.threshold * 100) }}%</span>
+          </div>
+          <p class="mt-2 text-ink-500">{{ aiStatus?.hint ?? '正在读取运行状态…' }}</p>
+        </div>
+
+        <Toggle v-model="spamEnabled" label="启用垃圾邮件侦测" />
+
+        <template v-if="spamEnabled">
+          <div class="mt-3 grid gap-3 md:grid-cols-2">
+            <div class="md:col-span-2">
+              <label class="label">分类模型</label>
+              <input v-model="s.spam_model" class="input" placeholder="@cf/meta/llama-3.1-8b-instruct" />
+              <p class="mt-1 text-[11px] text-ink-500"> Workers AI 文本模型，需支持 messages 输入格式</p>
+            </div>
+            <div>
+              <label class="label">判定阈值（{{ Math.round(Number(s.spam_threshold ?? 0.7) * 100) }}%）</label>
+              <input v-model.number="s.spam_threshold" type="range" min="0.3" max="0.95" step="0.05" class="w-full accent-henna-500" />
+              <p class="mt-1 text-[11px] text-ink-500">调高可减少误杀，调低更严格</p>
+            </div>
+            <div>
+              <label class="label">处置动作</label>
+              <select v-model="s.spam_action" class="input">
+                <option value="mark">仅标记（推荐）</option>
+                <option value="quarantine">隔离：标记且跳过转发推送</option>
+                <option value="reject">直接丢弃（不入库）</option>
+              </select>
+            </div>
+            <div>
+              <label class="label">正文截取长度</label>
+              <input v-model.number="s.spam_max_chars" type="number" min="200" max="4000" class="input" />
+            </div>
+            <div class="flex flex-col gap-2 md:col-span-2">
+              <Toggle v-model="spamSkipPush" label="垃圾邮件不触发 Telegram / Webhook / 转发" />
+              <Toggle v-model="spamHideInbox" label="收件箱隐藏垃圾邮件（可在「垃圾箱」查看）" />
+            </div>
+          </div>
+
+          <!-- REST 兜底（仅未绑定 AI 时显示） -->
+          <div v-if="aiStatus && !aiStatus.binding" class="mt-3 rounded-card border border-clay-300 bg-clay-500/5 p-3">
+            <p class="mb-2 text-xs font-semibold text-ink-700">REST API 兜底（可选）</p>
+            <div class="grid gap-2 md:grid-cols-2">
+              <input v-model="s.ai_account_id" class="input" placeholder="Cloudflare Account ID" />
+              <input v-model="s.ai_api_token" class="input" placeholder="API Token（留空则用环境变量）" />
+            </div>
+            <p class="mt-2 text-[11px] text-ink-500">
+              没填也能用 —— 会退回内置启发式规则。或在仓库变量设 AI_BINDING=off 移除绑定。
+            </p>
+          </div>
+        </template>
+
+        <!-- 现场测试 -->
+        <div class="mt-4 rounded-card border border-sand-200 p-3">
+          <div class="mb-2 flex items-center justify-between">
+            <span class="text-xs font-semibold text-ink-700">测试分类</span>
+            <button class="btn-ghost !px-2.5 !py-1 text-xs" :disabled="aiTesting" @click="runAiTest">
+              {{ aiTesting ? '判定中…' : '跑一次' }}
+            </button>
+          </div>
+          <div class="grid gap-2 md:grid-cols-2">
+            <input v-model="testMail.from" class="input !text-xs" placeholder="发件人" />
+            <input v-model="testMail.subject" class="input !text-xs" placeholder="主题" />
+            <textarea v-model="testMail.text" class="input min-h-[64px] !text-xs md:col-span-2" placeholder="正文" />
+          </div>
+          <div v-if="aiTest" class="mt-3 flex flex-wrap items-center gap-2 text-xs">
+            <span class="chip" :class="aiTest.spam ? 'chip-err' : 'chip-ok'">
+              {{ aiTest.spam ? '判定：垃圾' : '判定：正常' }}
+            </span>
+            <span class="text-ink-600">置信度 {{ Math.round(aiTest.score * 100) }}%</span>
+            <span class="chip-plain">来源 {{ aiTest.source === 'ai' ? 'Workers AI' : aiTest.source === 'heuristic' ? '启发式规则' : '未启用' }}</span>
+            <span class="text-ink-500">{{ aiTest.reason }}</span>
+          </div>
+        </div>
+      </Section>
+
+      <!-- ── Workers AI · 验证码识别 ───────────────────── -->
+      <Section title="Workers AI · 验证码识别" desc="识别登录验证码图片的内容（与垃圾侦测共用同一份 AI 凭据）">
         <Toggle v-model="aiEnabled" label="启用验证码识别" />
         <template v-if="aiEnabled">
           <div class="mt-3 grid gap-3 md:grid-cols-2">

@@ -78,6 +78,11 @@ export interface MailItem {
   subject: string;
   is_read: number;
   is_star: number;
+  /** Workers AI 垃圾邮件侦测 */
+  is_spam: number;
+  spam_score: number;
+  spam_reason: string;
+  spam_source: string;
   size: number;
   created_at: number;
   /** 仅 scope=all（管理员）时返回，标明这封邮件属于谁 */
@@ -176,6 +181,29 @@ export interface Invite {
   max_use: number;
   used: number;
   expire_at: number | null;
+}
+
+export interface AiStatus {
+  binding: boolean;
+  rest: boolean;
+  mode: string;
+  model: string;
+  enabled: boolean;
+  threshold: number;
+  action: string;
+  skipPush: boolean;
+  hideInbox: boolean;
+  defaultModel: string;
+  hint: string;
+}
+export interface AiTestResult {
+  spam: boolean;
+  score: number;
+  reason: string;
+  source: 'ai' | 'heuristic' | 'off';
+  model?: string;
+  heuristic: { score: number; reason: string };
+  availability: AiStatus;
 }
 
 export type SettingsMap = Record<string, string>;

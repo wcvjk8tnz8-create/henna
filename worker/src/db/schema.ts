@@ -41,6 +41,10 @@ CREATE TABLE IF NOT EXISTS mail_message (
   html_body  TEXT,
   is_read    INTEGER NOT NULL DEFAULT 0,
   is_star    INTEGER NOT NULL DEFAULT 0,
+  is_spam    INTEGER NOT NULL DEFAULT 0,
+  spam_score REAL NOT NULL DEFAULT 0,
+  spam_reason TEXT NOT NULL DEFAULT '',
+  spam_source TEXT NOT NULL DEFAULT '',
   size       INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL
 );
@@ -123,8 +127,27 @@ export function splitSql(sql: string): string[] {
     .filter((s) => s.length > 0 && !s.startsWith('--'));
 }
 
+/**
+ * 老库加列。SQLite 不支持 ADD COLUMN IF NOT EXISTS，
+ * 所以逐条试，列已存在会报 duplicate column name —— 吞掉即可。
+ * 这样 /api/init 反复跑都安全。
+ */
+const COLUMN_MIGRATIONS = [
+  'ALTER TABLE mail_message ADD COLUMN is_spam INTEGER NOT NULL DEFAULT 0',
+  'ALTER TABLE mail_message ADD COLUMN spam_score REAL NOT NULL DEFAULT 0',
+  "ALTER TABLE mail_message ADD COLUMN spam_reason TEXT NOT NULL DEFAULT ''",
+  "ALTER TABLE mail_message ADD COLUMN spam_source TEXT NOT NULL DEFAULT ''",
+];
+
 export async function ensureSchema(db: D1Database): Promise<void> {
   for (const stmt of splitSql(SCHEMA_SQL)) {
     await db.prepare(stmt).run();
+  }
+  for (const stmt of COLUMN_MIGRATIONS) {
+    try {
+      await db.prepare(stmt).run();
+    } catch {
+      /* 列已存在 */
+    }
   }
 }

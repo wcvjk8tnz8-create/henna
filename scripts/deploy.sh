@@ -84,6 +84,14 @@ else
   echo "   ✓ R2 $R2_BUCKET"
 fi
 
+# 账户未开通 Workers AI 时可用 AI_BINDING=off 移除绑定（功能走 REST / 启发式兜底）
+if [[ "${AI_BINDING:-on}" == "off" ]]; then
+  sed -i.bak '/^\[ai\]$/,/^$/d' "$C" && rm -f "$C.bak"
+  echo "   ! AI_BINDING=off，已移除 Workers AI 绑定"
+else
+  echo "   ✓ Workers AI 绑定（垃圾邮件侦测）"
+fi
+
 if grep -v '^[[:space:]]*#' "$C" | grep -q '\${'; then echo "✗ 仍有未替换的占位符" >&2; exit 1; fi
 if grep -qE '^\s*database_id\s*=\s*""' "$C"; then echo "✗ D1 database_id 为空" >&2; exit 1; fi
 if grep -qE '^\s*id\s*=\s*""' "$C"; then echo "✗ KV id 为空" >&2; exit 1; fi

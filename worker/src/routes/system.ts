@@ -17,6 +17,7 @@ import {
 } from '../db/settings';
 import { authRequired, adminOnly, authOptional } from '../middleware/auth';
 import { recognizeCaptcha } from '../lib/ai';
+import { aiAvailability, classifySpam, heuristicSpamScore, DEFAULT_SPAM_MODEL } from '../lib/spam';
 import { effectiveMode, publicUrl, putObject, getObject, type StorageConfig } from '../lib/storage';
 
 const system = new Hono<{ Bindings: Env }>();
@@ -273,6 +274,46 @@ export const initHandler = async (c: Context<{ Bindings: Env }>) => {
     headers: { 'Content-Type': 'text/plain; charset=utf-8' },
   });
 };
+
+/** Workers AI 垃圾侦测状态（管理员，设置页用） */
+system.get('/ai/status', authRequired as never, adminOnly as never, async (c) => {
+  const st = await getAllSettings(c.env.DB);
+  const a = aiAvailability(c.env, st);
+  return c.json(
+    ok({
+      ...a,
+      enabled: isTrue(st.spam_enabled),
+      threshold: Number(st.spam_threshold ?? 0.7),
+      action: st.spam_action ?? 'mark',
+      skipPush: isTrue(st.spam_skip_push),
+      hideInbox: isTrue(st.spam_hide_inbox),
+      defaultModel: DEFAULT_SPAM_MODEL,
+      hint: a.binding
+        ? '已绑定 Workers AI，收信时自动分类'
+        : a.rest
+          ? '未绑定 AI，将走 Cloudflare REST API 兜底'
+          : '未绑定 AI 且未填 API Token，将使用内置启发式规则',
+    }),
+  );
+});
+
+/** 设置页「测试一下」：拿一段样例文本跑一次真实分类 */
+system.post('/ai/test', authRequired as never, adminOnly as never, async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as {
+    from?: string;
+    subject?: string;
+    text?: string;
+  };
+  const st = await getAllSettings(c.env.DB);
+  const mail = {
+    from: body.from ?? 'test@example.com',
+    subject: body.subject ?? '测试邮件',
+    text: body.text ?? '',
+  };
+  const verdict = await classifySpam(c.env, mail, st);
+  const heuristic = heuristicSpamScore(mail);
+  return c.json(ok({ ...verdict, heuristic, availability: aiAvailability(c.env, st) }));
+});
 
 system.get('/init/:secret', initHandler);
 

@@ -114,6 +114,15 @@ export const DEFAULT_SETTINGS: Record<string, string> = {
   ai_model: '@cf/llava-hf/llava-1.5-7b-hf',
   ai_account_id: '',
   ai_api_token: '',
+  // ── 垃圾邮件侦测（Workers AI）
+  spam_enabled: 'true',
+  spam_model: '@cf/meta/llama-3.1-8b-instruct',
+  spam_threshold: '0.7',
+  // mark = 仅标记 / quarantine = 标记且跳过转发推送 / reject = 直接丢弃
+  spam_action: 'mark',
+  spam_skip_push: 'true',
+  spam_hide_inbox: 'true',
+  spam_max_chars: '1200',
 };
 
 export type SettingsMap = Record<string, string>;

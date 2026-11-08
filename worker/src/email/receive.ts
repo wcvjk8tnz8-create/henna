@@ -6,6 +6,7 @@ import { randomHex } from '../lib/crypto';
 import type { OutgoingMail } from '../providers/types';
 import { getAllSettings, isTrue } from '../db/settings';
 import { putObject, type StorageConfig } from '../lib/storage';
+import { classifySpam } from '../lib/spam';
 
 interface ParsedMail {
   from?: { name?: string; address?: string };
@@ -60,8 +61,26 @@ export async function handleIncoming(message: ForwardableEmailMessage, env: Env)
   const subject = parsed.subject ?? '(无主题)';
   const now = Date.now();
 
+  /* ── 垃圾邮件侦测（Workers AI）────────────────────────
+   * 放在入库前：AI 不可用时 classifySpam 内部会退到启发式规则，
+   * 整个过程不抛异常，收信链路绝不会被侦测拖垮。 */
+  const st = await getAllSettings(env.DB);
+  const mailForAi = {
+    from: fromAddr,
+    subject,
+    text: parsed.text ?? '',
+    html: parsed.html ?? '',
+  };
+  const verdict = await classifySpam(env, mailForAi, st);
+
+  // reject = 直接丢弃（不入库、不分发）。默认 mark，不会误杀。
+  if (isTrue(st.spam_enabled) && verdict.spam && st.spam_action === 'reject') {
+    console.info('spam rejected', { from: fromAddr, subject, score: verdict.score });
+    return;
+  }
+
   const inserted = await env.DB.prepare(
-    'INSERT INTO mail_message (user_id, address_id, direction, message_id, from_addr, from_name, to_addr, subject, text_body, html_body, is_read, is_star, size, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,0,0,?,?) RETURNING id',
+    'INSERT INTO mail_message (user_id, address_id, direction, message_id, from_addr, from_name, to_addr, subject, text_body, html_body, is_read, is_star, is_spam, spam_score, spam_reason, spam_source, size, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,0,0,?,?,?,?,?,?) RETURNING id',
   )
     .bind(
       ownerId,
@@ -74,6 +93,10 @@ export async function handleIncoming(message: ForwardableEmailMessage, env: Env)
       subject,
       parsed.text ?? null,
       parsed.html ?? null,
+      verdict.spam ? 1 : 0,
+      verdict.score,
+      verdict.reason,
+      verdict.source,
       raw.byteLength,
       now,
     )
@@ -81,7 +104,6 @@ export async function handleIncoming(message: ForwardableEmailMessage, env: Env)
   const messageId = inserted?.id ?? 0;
 
   // 附件落对象存储（R2 / S3 / 未启用时只登记元信息，绝不中断收信）
-  const st = await getAllSettings(env.DB);
   const storage: StorageConfig = {
     type: (st.storage_type as 'r2' | 's3' | 'none') || 'r2',
     publicDomain: st.storage_public_domain ?? '',
@@ -117,15 +139,36 @@ export async function handleIncoming(message: ForwardableEmailMessage, env: Env)
     subject,
     text: parsed.text ?? '',
     html: parsed.html ?? '',
+    spam: verdict.spam,
+    spamScore: verdict.score,
+    spamReason: verdict.reason,
   };
-  await dispatchRules(env, ownerId, payload);
-  await dispatchGlobal(env, payload);
+
+  /* 垃圾邮件默认不再往 Telegram / Webhook / 外部邮箱转发 ——
+   * 否则一次垃圾轰炸会把通知通道一起打爆。
+   * quarantine 动作强制跳过；mark 动作由 spam_skip_push 决定。 */
+  const skipPush =
+    verdict.spam &&
+    (st.spam_action === 'quarantine' || isTrue(st.spam_skip_push));
+  if (!skipPush) {
+    await dispatchRules(env, ownerId, payload);
+    await dispatchGlobal(env, payload);
+  }
 }
 
 async function dispatchRules(
   env: Env,
   userId: number,
-  mail: { to: string; from: string; subject: string; text: string; html: string },
+  mail: {
+    to: string;
+    from: string;
+    subject: string;
+    text: string;
+    html: string;
+    spam?: boolean;
+    spamScore?: number;
+    spamReason?: string;
+  },
 ): Promise<void> {
   const rules = await qAll<RuleRow>(
     env.DB,
@@ -184,7 +227,16 @@ function escapeMd(s: string): string {
  */
 async function dispatchGlobal(
   env: Env,
-  mail: { to: string; from: string; subject: string; text: string; html: string },
+  mail: {
+    to: string;
+    from: string;
+    subject: string;
+    text: string;
+    html: string;
+    spam?: boolean;
+    spamScore?: number;
+    spamReason?: string;
+  },
 ): Promise<void> {
   const s = await getAllSettings(env.DB);
   const body = `📮 *${escapeMd(mail.subject)}*\nFrom: ${escapeMd(mail.from)}\nTo: ${escapeMd(mail.to)}\n\n${escapeMd(

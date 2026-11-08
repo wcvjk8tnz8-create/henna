@@ -35,6 +35,13 @@ bucket_name = "${R2_BUCKET_NAME}"
 [observability]
 enabled = true
 
+# Workers AI 绑定：收信时做垃圾邮件分类。
+# 所有 Cloudflare 账户都有免费额度，不需要预先建资源。
+# 若你的账户未开通导致部署失败，在仓库变量里设 AI_BINDING=off 即可移除本段；
+# 移除后侦测会自动走 REST 兜底 / 启发式规则，功能不消失。
+[ai]
+binding = "AI"
+
 [vars]
 APP_NAME = "Henna Mail"
 JWT_SECRET = "${JWT_SECRET}"

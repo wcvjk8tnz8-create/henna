@@ -11,6 +11,13 @@ export interface Env {
   R2?: R2Bucket;
   /** 前端静态资源 */
   ASSETS: Fetcher;
+  /**
+   * Workers AI 绑定（wrangler `[ai] binding = "AI"`）。
+   * 可选：没绑定时垃圾邮件侦测会走 REST 兜底，再不行就退化成启发式规则。
+   */
+  AI?: {
+    run(model: string, input: Record<string, unknown>): Promise<unknown>;
+  };
 
   /** 可选：Cloudflare Email Service 原生发信 binding（需开通） */
   SEND_EMAIL?: SendEmailBinding;

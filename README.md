@@ -264,6 +264,29 @@ export interface MailProvider {
 顺带修了个越权：`/message/:id/read` 和 `/:id/star` 之前**完全没校验归属**，
 任何人都能改别人的已读和星标状态。现在统一走 `assertOwn`。
 
+### 🛡 垃圾邮件侦测（Workers AI）
+
+收信链路上的旁路分类，**AI 挂了不影响收信**。
+
+| 环节 | 行为 |
+|---|---|
+| 调用 | 原生 `[ai] binding = "AI"` → 无绑定时走 Cloudflare REST → 再不行用内置启发式规则 |
+| 模型 | 默认 `@cf/meta/llama-3.1-8b-instruct`，可在设置页改 |
+| 判定 | 模型返回 `{spam, score, reason}`，用**站点阈值**（默认 0.7）裁决，不信模型自己的布尔值，减少误杀 |
+| 落库 | `is_spam / spam_score / spam_reason / spam_source`，幂等 `ALTER TABLE` 加列 |
+| 处置 | `mark`（默认，仅标记）/ `quarantine`（跳过转发推送）/ `reject`（直接丢弃） |
+| 界面 | 收件箱新增「垃圾箱」tab、详情显示置信度与判定来源、可手动「不是垃圾」纠正 |
+
+**容错是重点**：模型输出包 markdown 代码块、前后带解释、返回纯文本 `SPAM`、
+score 给 0~100、JSON 被截断 —— 解析器全部兼容；实在解不出来就退到启发式规则，
+整个 `classifySpam` **永不抛异常**。
+
+垃圾邮件默认不触发 Telegram / Webhook / 外部转发，避免一次垃圾轰炸把通知通道打爆。
+
+如果账户未开通 Workers AI 导致部署失败，在仓库变量设 `AI_BINDING=off` 即可移除
+`[ai]` 段（本地部署用环境变量同名）；移除后自动走 REST 兜底或启发式规则，功能不消失。
+设置页的「Workers AI · 垃圾邮件侦测」会实时显示当前走的是哪条路径，还能填一段样例文本跑一次真实分类。
+
 ### 🗂 页面合并
 
 管理项太多，把相关的合并成带 tab 的汇总页（旧路径保留重定向，不会 404）：
@@ -447,6 +470,7 @@ cd web    && npm i && npm run dev        # http://localhost:5173 (代理 /api �
 | `13-nav-permission` | 未登录纯净登录页 + 普通用户收窄导航 |
 | `14-all-inbox` | 全部收件箱（管理员专用，按用户筛选） |
 | `15-mail-hub` / `16-invites` | 邮箱汇总页（地址 / 日志 / 分析）、邀请码独立页 |
+| `17-spam-box` / `18-ai-settings` | 垃圾箱、Workers AI 侦测设置 |
 | `20-landing-hero` / `21-landing-why` / `22-landing-cta` | 落地页（首屏 / 為什麼寫 / CTA） |
 
 预览图由 `tools/shot-mock.mjs` 用 mock 数据渲染，**非线上实例**。

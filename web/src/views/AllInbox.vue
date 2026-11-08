@@ -12,7 +12,7 @@ import { computed, onMounted, ref, watch } from 'vue';
 import { api, type MailDetail, type MailItem } from '../api';
 import { fmtSize, fmtTime, toast } from '../store';
 
-const box = ref<'in' | 'out'>('in');
+const box = ref<'in' | 'out' | 'spam'>('in');
 const starOnly = ref(false);
 const items = ref<MailItem[]>([]);
 const detail = ref<MailDetail | null>(null);
@@ -77,6 +77,7 @@ const safeHtml = computed(() => detail.value?.html_body ?? '');
 const emptyText = computed(() => {
   if (starOnly.value) return '还没有星标邮件';
   if (box.value === 'out') return '还没有发送记录';
+  if (box.value === 'spam') return '没有垃圾邮件';
   return '暂无邮件';
 });
 
@@ -104,6 +105,13 @@ onMounted(load);
               @click="box = 'out'"
             >
               发信
+            </button>
+            <button
+              class="rounded-md px-3 py-1 text-xs font-medium"
+              :class="box === 'spam' ? 'bg-white text-ink-900 shadow-sm' : 'text-ink-500'"
+              @click="box = 'spam'"
+            >
+              垃圾
             </button>
           </div>
           <button
@@ -152,6 +160,7 @@ onMounted(load);
           <div class="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-ink-500">
             <span class="chip-plain">{{ m.owner ?? '—' }}</span>
             <span>{{ fmtSize(m.size) }}</span>
+            <span v-if="m.is_spam" class="chip-err">垃圾 {{ Math.round((m.spam_score ?? 0) * 100) }}%</span>
             <span v-if="m.is_star" class="text-clay-500">★</span>
             <span v-if="!m.is_read" class="chip-warn">未读</span>
           </div>

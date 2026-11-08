@@ -6,7 +6,7 @@ import { useRouter } from 'vue-router';
 
 const router = useRouter();
 
-const box = ref<'in' | 'out' | 'draft'>('in');
+const box = ref<'in' | 'out' | 'draft' | 'spam'>('in');
 const starOnly = ref(false);
 const items = ref<MailItem[]>([]);
 const detail = ref<MailDetail | null>(null);
@@ -59,12 +59,31 @@ async function star() {
   detail.value.is_star = next;
 }
 
+/** 手动纠正 AI 判定：不是垃圾 / 标记为垃圾 */
+async function markSpam(next: number) {
+  if (!detail.value) return;
+  await api.post(`/message/${detail.value.id}/spam`, { spam: next });
+  detail.value.is_spam = next;
+  detail.value.spam_source = 'user';
+  detail.value.spam_reason = next ? '手动标记为垃圾' : '手动纠正为正常';
+  toast(next ? '已标记为垃圾邮件' : '已标记为正常邮件');
+  await load();
+}
+
+const sourceLabel: Record<string, string> = {
+  ai: 'Workers AI',
+  heuristic: '启发式规则',
+  user: '手动标记',
+  off: '未启用',
+};
+
 const safeHtml = computed(() => detail.value?.html_body ?? '');
 
 const emptyText = computed(() => {
   if (starOnly.value) return '还没有星标邮件';
   if (box.value === 'draft') return '没有任何草稿';
   if (box.value === 'out') return '还没有发送记录';
+  if (box.value === 'spam') return '垃圾箱是空的';
   return '暂无邮件。开启 Cloudflare Email Routing 后即可收信。';
 });
 
@@ -98,6 +117,14 @@ onMounted(load);
             @click="box = 'draft'"
           >
             草稿箱
+          </button>
+          <button
+            class="rounded-md px-3 py-1 text-xs font-medium"
+            :class="box === 'spam' ? 'bg-white text-ink-900 shadow-sm' : 'text-ink-500'"
+            title="Workers AI 判定的垃圾邮件"
+            @click="box = 'spam'"
+          >
+            垃圾箱
           </button>
         </div>
         <button
@@ -134,6 +161,7 @@ onMounted(load);
           <div class="mt-1 flex items-center gap-2 text-[11px] text-ink-500">
             <span>{{ fmtSize(m.size) }}</span>
             <span v-if="m.is_star" class="text-clay-500">★ 星标</span>
+            <span v-if="m.is_spam" class="chip-err">垃圾 {{ Math.round((m.spam_score ?? 0) * 100) }}%</span>
             <span v-if="!m.is_read" class="chip-warn">未读</span>
           </div>
         </button>
@@ -157,10 +185,25 @@ onMounted(load);
             <button class="btn-ghost !px-2.5 !py-1.5 text-xs" @click="star">
               {{ detail.is_star ? '取消星标' : '星标' }}
             </button>
+            <button class="btn-ghost !px-2.5 !py-1.5 text-xs" @click="markSpam(detail.is_spam ? 0 : 1)">
+              {{ detail.is_spam ? '不是垃圾' : '标记垃圾' }}
+            </button>
             <button class="btn-danger !px-2.5 !py-1.5 text-xs" @click="remove(detail.id)">删除</button>
           </div>
         </div>
         <div class="min-h-0 flex-1 overflow-y-auto p-6">
+          <!-- Workers AI 垃圾侦测结果 -->
+          <div
+            v-if="detail.spam_source && detail.spam_source !== 'off'"
+            class="mb-4 flex flex-wrap items-center gap-2 rounded-card border px-4 py-3 text-xs"
+            :class="detail.is_spam ? 'border-henna-200 bg-henna-50 text-henna-700' : 'border-sand-200 bg-white text-ink-500'"
+          >
+            <span class="font-semibold">{{ detail.is_spam ? '⚠ 疑似垃圾邮件' : '✓ 已通过垃圾侦测' }}</span>
+            <span class="chip-plain">{{ sourceLabel[detail.spam_source] ?? detail.spam_source }}</span>
+            <span>置信度 {{ Math.round((detail.spam_score ?? 0) * 100) }}%</span>
+            <span v-if="detail.spam_reason" class="text-ink-500">· {{ detail.spam_reason }}</span>
+          </div>
+
           <div
             v-if="detail.html_body"
             class="prose prose-sm max-w-none rounded-card border border-sand-200 bg-white p-5"

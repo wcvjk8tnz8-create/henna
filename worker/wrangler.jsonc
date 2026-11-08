@@ -37,6 +37,10 @@
     "enabled": true
   },
 
+  "ai": {
+    "binding": "AI"
+  },
+
   "vars": {
     "APP_NAME": "Henna Mail",
     "JWT_SECRET": "REPLACE_JWT_SECRET",
