@@ -16,6 +16,9 @@ const s = ref<SettingsMap>({});
 const loading = ref(true);
 const pulling = ref(false);
 const testing = ref(false);
+const brevoBusy = ref(false);
+const brevoResult = ref('');
+const brevoDomain = ref('');
 const regenerating = ref(false);
 const showSecret = ref(false);
 const openSource = ref<string>('resend');
@@ -38,6 +41,7 @@ async function load() {
       api.get<InboundLogItem[]>('/inbound/log?limit=30').catch(() => []),
       api.get<SettingsMap>('/system/settings'),
     ]);
+    if (cfg.value && !brevoDomain.value) brevoDomain.value = cfg.value.brevoDomain || '';
   } catch (e) {
     toast((e as Error).message, 'err');
   } finally {
@@ -70,6 +74,7 @@ async function saveInbound() {
   try {
     await api.put('/system/settings', {
       inbound_resend_api_key: s.value.inbound_resend_api_key ?? '',
+      inbound_brevo_api_key: s.value.inbound_brevo_api_key ?? '',
       inbound_poll_enabled: s.value.inbound_poll_enabled ?? 'false',
     });
     toast('已保存');
@@ -111,6 +116,23 @@ async function pull() {
     pullResult.value = `✗ ${(e as Error).message}`;
   } finally {
     pulling.value = false;
+  }
+}
+
+async function brevoSetup() {
+  brevoBusy.value = true;
+  brevoResult.value = '';
+  try {
+    const r = await api.post<{ created: boolean; id: string; note: string; domain: string }>(
+      '/inbound/brevo/setup',
+      { domain: brevoDomain.value, apiKey: s.value.inbound_brevo_api_key || undefined },
+    );
+    brevoResult.value = `✓ ${r.note}（webhook id ${r.id || '—'}）`;
+    await load();
+  } catch (e) {
+    brevoResult.value = `✗ ${(e as Error).message}`;
+  } finally {
+    brevoBusy.value = false;
   }
 }
 
@@ -231,6 +253,42 @@ onMounted(load);
           </button>
           <span v-if="pullResult" class="text-xs text-ink-600">{{ pullResult }}</span>
         </div>
+      </div>
+
+      <!-- Brevo -->
+      <div class="card p-5">
+        <h2 class="text-sm font-semibold text-ink-900">Brevo Inbound Parsing</h2>
+        <p class="mt-1 text-xs text-ink-500">
+          Brevo 要调 API 建一条 <code>type=inbound</code> 的 webhook，不能只在后台填 URL。
+          下面填接收子域，点一下就帮你建好。附件只有 <code>DownloadToken</code>，
+          系统会自动调 <code>GET /v3/inbound/attachments/:token</code> 下载。
+        </p>
+        <div class="mt-3 flex flex-wrap items-end gap-2">
+          <div class="min-w-0 flex-1">
+            <label class="label">接收子域</label>
+            <input v-model="brevoDomain" class="input" placeholder="reply.yourdomain.com" />
+          </div>
+          <div class="min-w-0 flex-1">
+            <label class="label">Brevo API Key（可选，留空复用发信服务商）</label>
+            <input v-model="s.inbound_brevo_api_key" class="input" placeholder="xkeysib-xxxx" />
+          </div>
+          <button class="btn-primary" :disabled="brevoBusy" @click="brevoSetup">
+            {{ brevoBusy ? '创建中…' : '一键创建 webhook' }}
+          </button>
+        </div>
+        <div class="mt-3 flex flex-wrap items-center gap-2">
+          <span class="chip" :class="cfg.brevoKeyConfigured ? 'chip-ok' : 'chip-warn'">
+            {{ cfg.brevoKeyConfigured ? `API Key 已配置（${cfg.brevoKeySource}）` : 'API Key 未配置：附件不会下载' }}
+          </span>
+          <button class="btn-ghost !py-1.5 text-xs" @click="saveInbound">保存</button>
+          <span v-if="brevoResult" class="text-xs" :class="brevoResult.startsWith('✓') ? 'text-henna-600' : 'text-clay-600'">
+            {{ brevoResult }}
+          </span>
+        </div>
+        <p class="mt-2 text-[11px] text-ink-500">
+          DNS 别忘了两条 MX：<code>10 inbound1.sendinblue.com.</code> ·
+          <code>20 inbound2.sendinblue.com.</code>。Inbound Parsing 需账户已开通该功能。
+        </p>
       </div>
 
       <!-- 测试 -->

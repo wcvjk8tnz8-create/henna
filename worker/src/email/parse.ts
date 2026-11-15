@@ -29,6 +29,8 @@ export interface ParseContext {
   settings: SettingsMap;
   /** 从已配置的 Resend 服务商自动取到的 API Key */
   resendApiKey?: string;
+  /** 从已配置的 Brevo 服务商自动取到的 API Key（下载附件要用） */
+  brevoApiKey?: string;
 }
 
 const MAX_ATTACHMENT = 8 * 1024 * 1024;
@@ -357,6 +359,118 @@ async function parseMailgun(req: Request): Promise<InboundMail[]> {
   ];
 }
 
+/* ── Brevo（原 Sendinblue）Inbound Parsing ───────────────────
+ * 官方文档：https://developers.brevo.com/docs/inbound-parse-webhooks
+ *
+ * 和别家最不一样的两点：
+ *  1) 顶层 items 是数组 —— 一次 POST 可能带多封邮件（批量）
+ *  2) 附件不含内容，只有 DownloadToken，要另调
+ *     GET /v3/inbound/attachments/:token 下载（api-key 头）
+ *
+ * Brevo 不签 webhook，安全靠 URL 里的 ?key= / Basic / Bearer。
+ * 另外它自带 Spam.Score（rspamd），只作为参考展示，不覆盖 Workers AI 裁决。 */
+function brevoMailbox(v: unknown): { address: string; name: string } {
+  if (!v || typeof v !== 'object') return { address: '', name: '' };
+  const o = v as Record<string, unknown>;
+  return {
+    address: extractEmail(str(o.Address ?? o.address ?? o.Email ?? o.email)),
+    name: str(o.Name ?? o.name),
+  };
+}
+
+/** Brevo 的 Headers 是 array<string | string[]>，从里面翻 Message-ID */
+function brevoHeader(headers: unknown, name: string): string {
+  if (!Array.isArray(headers)) return '';
+  const target = `${name.toLowerCase()}:`;
+  for (const h of headers) {
+    const parts = Array.isArray(h) ? h : [h];
+    for (const x of parts) {
+      if (typeof x === 'string' && x.toLowerCase().startsWith(target)) {
+        return x.slice(target.length).trim();
+      }
+    }
+  }
+  return '';
+}
+
+async function parseBrevo(req: Request, ctx: ParseContext): Promise<InboundMail[]> {
+  const body = await readJson(req);
+  // 批量是常态；也兼容被转发器解包成单封对象的情况
+  const items: unknown[] = Array.isArray(body.items)
+    ? body.items
+    : body.From || body.Subject || body.RawTextBody
+      ? [body]
+      : [];
+  if (!items.length) return [];
+
+  const key = ctx.settings.inbound_brevo_api_key || ctx.brevoApiKey || '';
+  const out: InboundMail[] = [];
+
+  for (const raw of items) {
+    if (!raw || typeof raw !== 'object') continue;
+    const e = raw as Record<string, unknown>;
+    const from = brevoMailbox(e.From);
+    const recipients = toRecipients(e.Recipients, e.To, e.Cc, e.ToFull);
+    const uuids = Array.isArray(e.Uuid) ? e.Uuid.map((x) => str(x)).filter(Boolean) : [];
+    const messageId = str(e.MessageId) || brevoHeader(e.Headers, 'Message-ID');
+
+    const spamRaw = e.Spam && typeof e.Spam === 'object'
+      ? (e.Spam as Record<string, unknown>).Score
+      : undefined;
+    const spamHint = typeof spamRaw === 'number' && Number.isFinite(spamRaw) ? spamRaw : undefined;
+
+    // 附件：只有 DownloadToken，逐个回拉
+    const atts: InboundAttachment[] = [];
+    let warning = '';
+    if (Array.isArray(e.Attachments) && e.Attachments.length) {
+      if (!key) {
+        warning = `有 ${e.Attachments.length} 个附件，但未配置 Brevo API Key，附件未下载`;
+      } else {
+        for (const a of e.Attachments as Record<string, unknown>[]) {
+          const token = str(a.DownloadToken ?? a.downloadToken);
+          if (!token) continue;
+          try {
+            const r = await fetch(
+              `https://api.brevo.com/v3/inbound/attachments/${encodeURIComponent(token)}`,
+              { headers: { 'api-key': key }, signal: AbortSignal.timeout(8000) },
+            );
+            if (!r.ok) continue;
+            const buf = await r.arrayBuffer();
+            if (buf.byteLength > MAX_ATTACHMENT) continue;
+            atts.push({
+              filename: str(a.Name ?? a.name) || 'file',
+              contentType: str(a.ContentType ?? a.contentType) || 'application/octet-stream',
+              content: buf,
+            });
+          } catch {
+            /* 单个附件失败跳过，不影响正文 */
+          }
+        }
+        if (atts.length < e.Attachments.length) {
+          warning = `部分附件下载失败（${atts.length}/${e.Attachments.length}）`;
+        }
+      }
+    }
+
+    out.push({
+      from: from.address || extractEmail(str(e.From)),
+      fromName: from.name || extractName(str(e.From)),
+      to: recipients,
+      subject: str(e.Subject) || '(无主题)',
+      // Brevo 会把签名剥掉生成 Markdown，没纯文本时用它兜底
+      text: str(e.RawTextBody) || str(e.ExtractedMarkdownMessage),
+      html: str(e.RawHtmlBody),
+      messageId: messageId || undefined,
+      eventId: uuids[0] || messageId || undefined,
+      attachments: atts,
+      spamHint,
+      warning: warning || undefined,
+      source: 'brevo',
+    });
+  }
+  return out;
+}
+
 /* ── 自建接口 ────────────────────────────────────────────────
  * 最通用的一种：POST 一段 JSON 就能入库，给脚本 / n8n / 自己服务器用。
  * 也支持 raw 字段传原始 MIME。 */
@@ -422,6 +536,8 @@ export async function parseInbound(
         return await parseSendGrid(req);
       case 'mailgun':
         return await parseMailgun(req);
+      case 'brevo':
+        return await parseBrevo(req, ctx);
       case 'generic':
         return await parseGeneric(req);
       default:

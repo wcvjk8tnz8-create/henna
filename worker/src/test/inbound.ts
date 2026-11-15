@@ -64,7 +64,7 @@ check('无 tag 不变', stripPlusTag('a@b.com') === 'a@b.com');
 check('收件人数组去重', JSON.stringify(toRecipients(['a@b.com', 'c@d.com'], 'a@b.com')) === JSON.stringify(['a@b.com', 'c@d.com']));
 check('收件人对象（Postmark ToFull）', toRecipients([{ Email: 'x@y.com' }]).includes('x@y.com'));
 check('逗号串', toRecipients('a@b.com, c@d.com').length === 2);
-check('来源清单含 6 种', INBOUND_SOURCES.length === 6 && INBOUND_SOURCES.includes('generic'));
+check('来源清单含 7 种（含 brevo）', INBOUND_SOURCES.length === 7 && INBOUND_SOURCES.includes('brevo') && INBOUND_SOURCES.includes('generic'));
 
 console.log('');
 console.log('base64：');
@@ -218,6 +218,93 @@ check('有 Key → 调用 Receiving API', called.some((u) => u.includes('/emails
 check('回拉到正文', rsWithKey[0]?.text === 'full text' && rsWithKey[0]?.html === '<p>full html</p>');
 check('回拉到附件 API 也调了', called.some((u) => u.includes('/attachments')));
 check('从 headers 补 Message-ID', rsWithKey[0]?.messageId === '<resend-1@acme>');
+
+console.log('');
+console.log('Brevo Inbound Parsing：');
+const brevoItems = {
+  items: [
+    {
+      Uuid: ['uuid-a'],
+      MessageId: '<brevo-1@example.com>',
+      From: { Address: 'john@example.com', Name: 'John Doe' },
+      To: [{ Address: 'box@r0.us.ci', Name: '' }],
+      Recipients: [{ Address: 'box@r0.us.ci' }],
+      Cc: [],
+      Subject: 'Re: Issue with my order',
+      RawTextBody: 'I still have not received my order.',
+      RawHtmlBody: '<p>I still have not received my order.</p>',
+      ExtractedMarkdownMessage: 'I still have not received my order.',
+      Spam: { Score: 0.4 },
+      Headers: ['Message-ID: <brevo-1@example.com>', 'From: John <john@example.com>'],
+      Attachments: [],
+    },
+    {
+      Uuid: ['uuid-b'],
+      MessageId: '<brevo-2@example.com>',
+      From: { Address: 'jane@example.com', Name: 'Jane' },
+      Recipients: [{ Address: 'box+news@r0.us.ci' }],
+      Subject: 'No plain text',
+      ExtractedMarkdownMessage: 'Markdown fallback body',
+      RawHtmlBody: '<p>html only</p>',
+      Spam: { Score: 7.2 },
+      Attachments: [],
+    },
+  ],
+};
+const bv = await parseInbound('brevo', jsonReq(brevoItems), ctx);
+check('items 批量 → 2 封', bv.length === 2);
+check('Mailbox 对象 From', bv[0]?.from === 'john@example.com' && bv[0]?.fromName === 'John Doe');
+check('Recipients 作收件人', bv[0]?.to?.[0] === 'box@r0.us.ci');
+check('RawTextBody / RawHtmlBody', bv[0]?.text?.includes('received') === true && bv[0]?.html === '<p>I still have not received my order.</p>');
+check('MessageId + Uuid 去重键', bv[0]?.messageId === '<brevo-1@example.com>' && bv[0]?.eventId === 'uuid-a');
+check('Spam.Score 作为参考', bv[0]?.spamHint === 0.4 && bv[1]?.spamHint === 7.2);
+check('无纯文本时回退 ExtractedMarkdownMessage', bv[1]?.text === 'Markdown fallback body');
+check('子地址 +tag 保留', bv[1]?.to?.[0] === 'box+news@r0.us.ci');
+
+const bvSingle = await parseInbound('brevo', jsonReq({
+  From: { Address: 'single@example.com' },
+  To: [{ Address: 'box@r0.us.ci' }],
+  Subject: '解包成单封',
+  RawTextBody: 'hi',
+  MessageId: '<single-1>',
+}), ctx);
+check('被解包成单对象也兼容', bvSingle.length === 1 && bvSingle[0]?.subject === '解包成单封');
+const bvEmpty = await parseInbound('brevo', jsonReq({ items: [] }), ctx);
+check('空 items → 0 封不抛异常', bvEmpty.length === 0);
+
+// 附件：DownloadToken 回拉
+const bvFetchOrig = globalThis.fetch;
+let brevoCalls: string[] = [];
+globalThis.fetch = (async (input: string | URL | Request) => {
+  const u = String(input);
+  brevoCalls.push(u);
+  return new Response(new Uint8Array([80, 68, 70]), {
+    status: 200,
+    headers: { 'Content-Type': 'application/pdf' },
+  });
+}) as typeof fetch;
+const bvAtt = await parseInbound('brevo', jsonReq({
+  items: [{
+    MessageId: '<att-1>', Uuid: ['u-att'],
+    From: { Address: 'a@b.com' }, Recipients: [{ Address: 'box@r0.us.ci' }],
+    Subject: '带附件', RawTextBody: 'see attachment',
+    Attachments: [{ Name: 'doc.pdf', ContentType: 'application/pdf', ContentLength: 3, DownloadToken: 'tok-123' }],
+  }],
+}), { ...ctx, brevoApiKey: 'xkeysib-test' });
+globalThis.fetch = bvFetchOrig;
+check('调用 /v3/inbound/attachments/:token', brevoCalls.some((u) => u.includes('/inbound/attachments/tok-123')));
+check('附件内容与类型', bvAtt[0]?.attachments?.[0]?.filename === 'doc.pdf' && bvAtt[0]?.attachments?.[0]?.contentType === 'application/pdf');
+check('附件字节还原', bvAtt[0]?.attachments?.[0]?.content.byteLength === 3);
+
+const bvNoKey = await parseInbound('brevo', jsonReq({
+  items: [{
+    MessageId: '<att-2>', From: { Address: 'a@b.com' }, Recipients: [{ Address: 'box@r0.us.ci' }],
+    Subject: '缺 Key', RawTextBody: 'hi',
+    Attachments: [{ Name: 'a.pdf', DownloadToken: 'tok-2' }],
+  }],
+}), ctx);
+check('无 API Key 时给降级提示而非丢信', bvNoKey.length === 1 && (bvNoKey[0]?.warning ?? '').includes('未配置 Brevo API Key'));
+check('缺 Key 时正文不受污染', bvNoKey[0]?.text === 'hi');
 
 console.log('');
 console.log('兜底：');

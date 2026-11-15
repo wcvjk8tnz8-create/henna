@@ -25,7 +25,7 @@ function check(name: string, cond: boolean): void {
   else { fail++; console.log(`  ✗ ${name}`); }
 }
 
-interface MsgRow { id: number; message_id: string | null; external_id: string | null; to_addr: string; subject: string }
+interface MsgRow { id: number; message_id: string | null; external_id: string | null; to_addr: string; subject: string; spam_reason: string }
 interface LogRow { source: string; status: string; reason: string; subject: string }
 
 function makeDb() {
@@ -56,6 +56,7 @@ function makeDb() {
               external_id: (args[4] as string) ?? null,
               to_addr: String(args[7] ?? ''),
               subject: String(args[8] ?? ''),
+              spam_reason: String(args[13] ?? ''),
             });
             return { id } as T;
           }
@@ -233,6 +234,50 @@ console.log('其它来源与探测：');
   const r = await app.request(empty, {}, env);
   const j = (await r.json()) as { received: number };
   check('服务商验证请求（空 payload）→ 200 且 received=0', r.status === 200 && j.received === 0);
+}
+
+console.log('');
+console.log('Brevo webhook：');
+{
+  const { app, env, state } = build();
+  const brevoReq = new Request('https://mail.test/api/inbound/brevo?key=test-secret', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      items: [{
+        Uuid: ['u-1'], MessageId: '<brevo-http-1>',
+        From: { Address: 'john@example.com', Name: 'John' },
+        Recipients: [{ Address: 'box@r0.us.ci' }],
+        Subject: 'Brevo 来信', RawTextBody: 'hello', Spam: { Score: 1.1 }, Attachments: [],
+      }],
+    }),
+  });
+  const r = await app.request(brevoReq, {}, env);
+  const j = (await r.json()) as { received: number; results: { status: string }[] };
+  check('走同一条链路入库', r.status === 200 && j.received === 1 && j.results?.[0]?.status === 'ok');
+  check('日志来源标记为 brevo', state.logs.some((l) => l.source === 'brevo'));
+  check('Spam.Score 写进判定原因', state.messages.some((m) => m.spam_reason.includes('1.10')));
+}
+{
+  const { app, env } = build();
+  const basic = 'Basic ' + btoa('user:test-secret');
+  const r = await app.request(new Request('https://mail.test/api/inbound/brevo', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: basic },
+    body: JSON.stringify({
+      items: [{ MessageId: '<brevo-basic>', From: { Address: 'a@b.com' }, Recipients: [{ Address: 'box@r0.us.ci' }], Subject: 'Basic 认证', RawTextBody: 'hi' }],
+    }),
+  }), {}, env);
+  check('支持 Brevo 的 Basic auth 加固', r.status === 200);
+}
+{
+  const { app, env } = build();
+  const r = await app.request(new Request('https://mail.test/api/inbound/brevo', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Inbound-Key': 'test-secret' },
+    body: JSON.stringify({ items: [{ MessageId: '<brevo-hdr>', From: { Address: 'a@b.com' }, Recipients: [{ Address: 'box@r0.us.ci' }], Subject: 'Header', RawTextBody: 'hi' }] }),
+  }), {}, env);
+  check('支持自定义 header 加固', r.status === 200);
 }
 
 console.log('');

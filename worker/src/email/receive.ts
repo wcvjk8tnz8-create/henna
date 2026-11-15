@@ -100,7 +100,7 @@ export async function ingestInbound(
   }
   // 无人认领的邮件直接丢弃（避免垃圾堆积）
   if (!ownerId) {
-    await logInbound(env, mail, null, 'dropped', '收件地址无人认领');
+    await logInbound(env, mail, null, 'dropped', withWarning('收件地址无人认领', mail.warning));
     return { status: 'dropped', reason: '收件地址无人认领' };
   }
 
@@ -114,11 +114,16 @@ export async function ingestInbound(
   const st = await getAllSettings(env.DB);
   const mailForAi = { from: fromAddr, subject, text: mail.text ?? '', html: mail.html ?? '' };
   const verdict = await classifySpam(env, mailForAi, st);
+  // 服务商自带的垃圾评分只作参考展示，不覆盖 Workers AI 的裁决
+  // （避免第三方评分口径不一致造成误杀）
+  if (typeof mail.spamHint === 'number' && Number.isFinite(mail.spamHint)) {
+    verdict.reason = `服务商评分 ${mail.spamHint.toFixed(2)} · ${verdict.reason}`;
+  }
 
   // reject = 直接丢弃（不入库、不分发）。默认 mark，不会误杀。
   if (isTrue(st.spam_enabled) && verdict.spam && st.spam_action === 'reject') {
     console.info('spam rejected', { from: fromAddr, subject, score: verdict.score });
-    await logInbound(env, mail, ownerId, 'rejected', `垃圾 ${verdict.score}`);
+    await logInbound(env, mail, ownerId, 'rejected', withWarning(`垃圾 ${verdict.score}`, mail.warning));
     return { status: 'dropped', reason: '垃圾邮件（reject）' };
   }
 
@@ -202,13 +207,18 @@ export async function ingestInbound(
     mail,
     ownerId,
     'ok',
-    verdict.spam ? `入库（垃圾 ${verdict.score}）` : '入库',
+    withWarning(verdict.spam ? `入库（垃圾 ${verdict.score}）` : '入库', mail.warning),
     messageId,
   );
   return { status: 'ok', messageId };
 }
 
 /** 入站日志：排查「为什么没收到」时全靠它 */
+/** 降级提示只写日志，不进邮件正文 */
+function withWarning(reason: string, warning?: string): string {
+  return warning ? `${reason} · ${warning}` : reason;
+}
+
 async function logInbound(
   env: Env,
   mail: InboundMail,

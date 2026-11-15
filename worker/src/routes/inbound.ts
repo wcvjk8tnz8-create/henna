@@ -43,11 +43,27 @@ function safeEqual(a: string, b: string): boolean {
   return diff === 0;
 }
 
+/** Brevo 不签 webhook，官方给的几种加固方式都要能吃到：
+ *  URL query / X-Inbound-Key / Bearer / Basic（密码部分）/ URL 内嵌 user:pass */
 function providedKey(c: Context<Ctx>): string {
-  const q = new URL(c.req.url).searchParams.get('key') ?? '';
+  const u = new URL(c.req.url);
+  const q = u.searchParams.get('key') ?? '';
   const h = c.req.header('x-inbound-key') ?? '';
-  const auth = (c.req.header('authorization') ?? '').replace(/^Bearer\s+/i, '');
-  return q || h || auth || '';
+  const authHeader = c.req.header('authorization') ?? '';
+  // 必须是真的 Bearer 才取，否则 Basic 头会被原样当成密钥传下去
+  const bearer = /^Bearer\s+/i.test(authHeader) ? authHeader.replace(/^Bearer\s+/i, '') : '';
+  let basic = '';
+  if (/^Basic\s+/i.test(authHeader)) {
+    try {
+      const decoded = atob(authHeader.replace(/^Basic\s+/i, ''));
+      basic = decoded.includes(':') ? decoded.slice(decoded.indexOf(':') + 1) : decoded;
+    } catch {
+      /* 坏 base64 忽略 */
+    }
+  }
+  // https://user:pass@host/... 形式（部分客户端会把它转成 Basic 头，这里双保险）
+  const urlCred = u.password || u.username || '';
+  return q || h || bearer || basic || urlCred || '';
 }
 
 function expectedKey(env: Env, settings: Record<string, string>): string {
@@ -60,6 +76,23 @@ async function resendKeyFromProvider(env: Env): Promise<string> {
     const rows = await qAll<{ config: string }>(
       env.DB,
       "SELECT config FROM mail_provider WHERE kind = 'resend' AND enabled = 1 ORDER BY id LIMIT 1",
+    );
+    for (const r of rows) {
+      const cfg = JSON.parse(r.config || '{}') as { apiKey?: string };
+      if (cfg.apiKey) return cfg.apiKey;
+    }
+  } catch {
+    /* 表还没建好 */
+  }
+  return '';
+}
+
+/** 从已配置的 Brevo 服务商自动取 API Key —— 配过发信就能下附件 */
+async function brevoKeyFromProvider(env: Env): Promise<string> {
+  try {
+    const rows = await qAll<{ config: string }>(
+      env.DB,
+      "SELECT config FROM mail_provider WHERE kind = 'brevo' AND enabled = 1 ORDER BY id LIMIT 1",
     );
     for (const r of rows) {
       const cfg = JSON.parse(r.config || '{}') as { apiKey?: string };
@@ -96,6 +129,7 @@ async function webhookHandler(c: Context<Ctx>) {
     env: c.env,
     settings,
     resendApiKey: await resendKeyFromProvider(c.env),
+    brevoApiKey: await brevoKeyFromProvider(c.env),
   });
 
   if (!mails.length) {
@@ -125,6 +159,7 @@ inbound.get('/config', authRequired as never, adminOnly as never, async (c) => {
   const origin = new URL(c.req.url).origin;
   const secret = expectedKey(c.env, s);
   const autoKey = await resendKeyFromProvider(c.env);
+  const brevoAuto = await brevoKeyFromProvider(c.env);
 
   const sources = [
     {
@@ -160,6 +195,14 @@ inbound.get('/config', authRequired as never, adminOnly as never, async (c) => {
       url: `${origin}/api/inbound/mailgun?key=${encodeURIComponent(secret)}`,
     },
     {
+      key: 'brevo',
+      label: 'Brevo',
+      mx: '接收子域（如 reply.yourdomain.com）加两条 MX：10 inbound1.sendinblue.com. / 20 inbound2.sendinblue.com.',
+      where: 'POST /v3/webhooks 建 type=inbound 的 webhook（本页下方可以一键创建）',
+      note: '一次 POST 可能带多封（items 数组）；附件只有 DownloadToken，系统自动回拉；自带 Spam.Score 仅作参考',
+      url: `${origin}/api/inbound/brevo?key=${encodeURIComponent(secret)}`,
+    },
+    {
       key: 'generic',
       label: '自建接口',
       mx: '不需要 MX',
@@ -177,6 +220,9 @@ inbound.get('/config', authRequired as never, adminOnly as never, async (c) => {
       usingJwtFallback: !s.inbound_secret,
       resendKeyConfigured: !!(s.inbound_resend_api_key || autoKey),
       resendKeySource: s.inbound_resend_api_key ? '收信通道设置' : autoKey ? '发信服务商（自动）' : '未配置',
+      brevoKeyConfigured: !!(s.inbound_brevo_api_key || brevoAuto),
+      brevoKeySource: s.inbound_brevo_api_key ? '收信通道设置' : brevoAuto ? '发信服务商（自动）' : '未配置',
+      brevoDomain: s.inbound_brevo_domain || '',
       pollEnabled: isTrue(s.inbound_poll_enabled),
       cloudflareRouting: true,
       sources,
@@ -267,6 +313,88 @@ inbound.post('/pull', authRequired as never, adminOnly as never, async (c) => {
     }
   }
   return c.json(ok({ fetched: j.data?.length ?? 0, hasMore: !!j.has_more, results: out }));
+});
+
+/**
+ * 一键创建 Brevo inbound webhook。
+ *
+ * Brevo 的 inbound parsing 不能只在后台填个 URL 就完事 —— 要调
+ * POST /v3/webhooks 建一条 type=inbound、订阅 inboundEmailProcessed 的
+ * webhook，并指定接收子域。这里把这一步做成按钮。
+ * 先查已有 webhook，避免重复创建（Brevo 账户上限 40 条）。
+ */
+inbound.post('/brevo/setup', authRequired as never, adminOnly as never, async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as { domain?: string; apiKey?: string };
+  const s = await getAllSettings(c.env.DB);
+  const key = body.apiKey || s.inbound_brevo_api_key || (await brevoKeyFromProvider(c.env));
+  if (!key) {
+    throw new HttpError('未配置 Brevo API Key：在收信通道填写，或先添加一个 Brevo 发信服务商');
+  }
+  const domain = (body.domain || s.inbound_brevo_domain || '').trim().toLowerCase();
+  if (!domain || !/^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}$/.test(domain)) {
+    throw new HttpError('请填接收子域，例如 reply.yourdomain.com');
+  }
+
+  const url = `${new URL(c.req.url).origin}/api/inbound/brevo?key=${encodeURIComponent(expectedKey(c.env, s))}`;
+  const headers = { 'api-key': key, accept: 'application/json' };
+
+  // 先查重
+  let existingId = '';
+  try {
+    const list = await fetch('https://api.brevo.com/v3/webhooks', {
+      headers,
+      signal: AbortSignal.timeout(8000),
+    });
+    if (list.ok) {
+      const j = (await list.json()) as {
+        webhooks?: { id?: number | string; url?: string; type?: string }[];
+      };
+      const arr = Array.isArray(j) ? (j as unknown as { id?: number | string; url?: string }[]) : j.webhooks ?? [];
+      const hit = arr.find((w) => w.url === url);
+      if (hit?.id != null) existingId = String(hit.id);
+    }
+  } catch {
+    /* 查重失败不影响创建 */
+  }
+  if (existingId) {
+    await setSettings(c.env.DB, { inbound_brevo_domain: domain });
+    return c.json(ok({ created: false, id: existingId, url, domain, note: '已存在同地址的 webhook，无需重复创建' }));
+  }
+
+  const r = await fetch('https://api.brevo.com/v3/webhooks', {
+    method: 'POST',
+    headers: { ...headers, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      type: 'inbound',
+      events: ['inboundEmailProcessed'],
+      url,
+      domain,
+      description: 'Henna Mail inbound parsing',
+    }),
+    signal: AbortSignal.timeout(10000),
+  });
+  const text = await r.text();
+  if (!r.ok) {
+    throw new HttpError(
+      `Brevo 返回 HTTP ${r.status}：${text.slice(0, 200)}。若提示 inbound 不可用，说明该账户/计划尚未开通 Inbound Parsing`,
+    );
+  }
+  let id = '';
+  try {
+    id = String((JSON.parse(text) as { id?: number | string }).id ?? '');
+  } catch {
+    /* 有些版本只返回 201 无 body */
+  }
+  await setSettings(c.env.DB, { inbound_brevo_domain: domain });
+  return c.json(
+    ok({
+      created: true,
+      id,
+      url,
+      domain,
+      note: 'webhook 已创建；别忘了给接收子域加上两条 MX 记录',
+    }),
+  );
 });
 
 /** 定时拉取（cron 调用），失败不影响日常维护任务 */

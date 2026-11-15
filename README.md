@@ -276,6 +276,7 @@ webhook 地址填到发信商，或者用自己的服务器 POST 到「自建接
 | **Postmark** | `/api/inbound/postmark` | MX 指向 `inbound.postmarkapp.com`，Server → Inbound 填 webhook URL |
 | **SendGrid** | `/api/inbound/sendgrid` | 收信子域 MX 10 → `mx.sendgrid.net`，Settings → Inbound Parse；建议勾 raw MIME |
 | **Mailgun** | `/api/inbound/mailgun` | Routes → `forward()` 到该 URL；表单 / JSON 两种格式都吃 |
+| **Brevo** | `/api/inbound/brevo` | 接收子域加两条 MX，再建 `type=inbound` webhook（设置页可一键创建） |
 | **自建接口** | `/api/inbound/generic` | POST 一段 JSON 即可，给脚本 / n8n / 自己的服务器用 |
 
 **两条路径共用同一套入库逻辑**：解析成统一的 `InboundMail` 后，归属匹配、AI 分类、
@@ -290,7 +291,15 @@ webhook 地址填到发信商，或者用自己的服务器 POST 到「自建接
 - **Resend 没配 API Key**：仍会入库，只存元数据并写明原因；留空时自动复用已配置的 Resend 发信服务商 Key
 - **webhook 挂了**：可开「定时拉取」（每日随维护任务执行），或点「立即拉取」走 `GET /emails/receiving` 补信
 
-设置页在 **站点管理 → 收信通道**，含各家 DNS / 后台配置指引、curl 示例、
+**Brevo 有两处和别家不同**，都处理了：
+
+- **批量**：webhook 顶层是 `items` 数组，一次 POST 可能带多封，解析器逐封归一，不是只取第一封
+- **附件不含内容**：`Attachments[]` 只给 `DownloadToken`，系统自动调 `GET https://api.brevo.com/v3/inbound/attachments/:token` 下载（用 Brevo API Key，留空则复用已配置的 Brevo 发信服务商）。没配 Key 时仍入库，日志里写明「附件未下载」，不会丢信
+- **自带 `Spam.Score`**（rspamd）：只写进判定原因作参考，**不覆盖 Workers AI 的裁决**，避免两家口径不一致造成误杀
+- **不签 webhook**：除 `?key=` 外，还吃 `X-Inbound-Key`、Bearer、Basic（密码部分）和 URL 内嵌 `user:pass` —— 对应 Brevo 官方给的几种加固方式
+- **建 webhook 要调 API**：设置页提供「一键创建」，调 `POST /v3/webhooks`（`type=inbound`、`events=["inboundEmailProcessed"]`、`domain=接收子域`），先查重避免重复创建；账户需已开通 Inbound Parsing
+
+设置页在 **站点管理 → 收信通道**，含各家 DNS / 后台配置指引、curl 示例、Brevo 一键创建、
 端到端测试（正常邮件 / 垃圾邮件各一封）和最近 30 条入站日志。
 
 ### 🛡 垃圾邮件侦测（Workers AI）
@@ -501,6 +510,7 @@ cd web    && npm i && npm run dev        # http://localhost:5173 (代理 /api �
 | `15-mail-hub` / `16-invites` | 邮箱汇总页（地址 / 日志 / 分析）、邀请码独立页 |
 | `17-spam-box` / `18-ai-settings` | 垃圾箱、Workers AI 侦测设置 |
 | `23-inbound-config` / `24-inbound-log` | 收信通道设置、入站日志 |
+| `25-brevo-setup` | Brevo Inbound Parsing 一键创建 webhook |
 | `20-landing-hero` / `21-landing-why` / `22-landing-cta` | 落地页（首屏 / 為什麼寫 / CTA） |
 
 预览图由 `tools/shot-mock.mjs` 用 mock 数据渲染，**非线上实例**。

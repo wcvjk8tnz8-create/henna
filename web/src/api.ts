@@ -221,6 +221,9 @@ export interface InboundConfig {
   usingJwtFallback: boolean;
   resendKeyConfigured: boolean;
   resendKeySource: string;
+  brevoKeyConfigured: boolean;
+  brevoKeySource: string;
+  brevoDomain: string;
   pollEnabled: boolean;
   cloudflareRouting: boolean;
   sources: InboundSourceConfig[];

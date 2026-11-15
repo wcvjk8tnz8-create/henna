@@ -27,11 +27,22 @@ export interface InboundMail {
   attachments?: InboundAttachment[];
   /** 原始邮件体积（字节） */
   size?: number;
-  /** 来源：cloudflare / resend / postmark / sendgrid / mailgun / generic */
+  /** 服务商自带的垃圾评分（如 Brevo 的 Spam.Score，rspamd 算的），仅作展示参考 */
+  spamHint?: number;
+  /** 解析过程中的降级提示，写进入站日志，不污染邮件正文 */
+  warning?: string;
+  /** 来源：cloudflare / resend / postmark / sendgrid / mailgun / brevo / generic */
   source: string;
 }
 
-export type InboundSource = 'cloudflare' | 'resend' | 'postmark' | 'sendgrid' | 'mailgun' | 'generic';
+export type InboundSource =
+  | 'cloudflare'
+  | 'resend'
+  | 'postmark'
+  | 'sendgrid'
+  | 'mailgun'
+  | 'brevo'
+  | 'generic';
 
 export const INBOUND_SOURCES: InboundSource[] = [
   'cloudflare',
@@ -39,6 +50,7 @@ export const INBOUND_SOURCES: InboundSource[] = [
   'postmark',
   'sendgrid',
   'mailgun',
+  'brevo',
   'generic',
 ];
 
@@ -71,7 +83,7 @@ export function toRecipients(...values: unknown[]): string[] {
       for (const item of v) out.push(...toRecipients(item));
     } else if (v && typeof v === 'object') {
       const o = v as Record<string, unknown>;
-      out.push(extractEmail(String(o.Email ?? o.email ?? o.address ?? '')));
+      out.push(extractEmail(String(o.Email ?? o.email ?? o.Address ?? o.address ?? '')));
     } else if (typeof v === 'string') {
       for (const part of v.split(/[,;]/)) {
         const a = extractEmail(part);

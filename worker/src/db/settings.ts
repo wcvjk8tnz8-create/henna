@@ -19,6 +19,7 @@ export const SECRET_KEYS = [
   's3_secret_key',
   'ai_api_token',
   'inbound_resend_api_key',
+  'inbound_brevo_api_key',
 ] as const;
 
 /** 公开字段：未登录也能读（登录页要用） */
@@ -129,6 +130,10 @@ export const DEFAULT_SETTINGS: Record<string, string> = {
   inbound_secret: '',
   // 空 = 自动从已配置的 Resend 发信服务商取 API Key
   inbound_resend_api_key: '',
+  // 空 = 自动从已配置的 Brevo 发信服务商取 API Key（下载附件用）
+  inbound_brevo_api_key: '',
+  // Brevo Inbound Parsing 的接收子域（如 reply.yourdomain.com）
+  inbound_brevo_domain: '',
   // 定时从 Resend 拉取已接收邮件（webhook 挂掉时的兜底）
   inbound_poll_enabled: 'false',
 };
