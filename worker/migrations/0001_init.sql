@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS mail_message (
   spam_score REAL NOT NULL DEFAULT 0,
   spam_reason TEXT NOT NULL DEFAULT '',
   spam_source TEXT NOT NULL DEFAULT '',
+  external_id TEXT,
   size       INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL
 );
@@ -115,3 +116,19 @@ CREATE TABLE IF NOT EXISTS setting (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
+
+-- 入站日志
+CREATE TABLE IF NOT EXISTS inbound_log (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  source     TEXT NOT NULL DEFAULT '',
+  event_id   TEXT NOT NULL DEFAULT '',
+  from_addr  TEXT NOT NULL DEFAULT '',
+  to_addr    TEXT NOT NULL DEFAULT '',
+  subject    TEXT NOT NULL DEFAULT '',
+  owner_id   INTEGER,
+  message_id INTEGER,
+  status     TEXT NOT NULL DEFAULT '',
+  reason     TEXT NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_inbound_time ON inbound_log(created_at DESC);

@@ -3,6 +3,7 @@ import type { Env } from './env';
 import { bindErrorHandler } from './lib/http';
 import { exec } from './db/query';
 import { handleIncoming } from './email/receive';
+import inbound, { pollInbound } from './routes/inbound';
 
 import system, { initHandler } from './routes/system';
 import auth from './routes/auth';
@@ -26,6 +27,7 @@ app.route('/api/provider', provider);
 app.route('/api/rule', rule);
 app.route('/api/admin', admin);
 app.route('/api/oauth', oauth);
+app.route('/api/inbound', inbound);
 
 // 初始化短路径：部署脚本用 /api/init/<JWT_SECRET>
 app.get('/api/init/:secret', initHandler);
@@ -47,5 +49,10 @@ export default {
     await exec(env.DB, 'UPDATE user SET used = 0');
     await exec(env.DB, 'UPDATE mail_provider SET daily_used = 0');
     await exec(env.DB, 'DELETE FROM mail_log WHERE created_at < ?', Date.now() - 90 * 86400000);
+    await exec(env.DB, 'DELETE FROM inbound_log WHERE created_at < ?', Date.now() - 30 * 86400000).catch(
+      () => undefined,
+    );
+    // 从 Resend 主动拉取（默认关闭，开了才会真发请求）
+    await pollInbound(env).catch(() => undefined);
   },
 } satisfies ExportedHandler<Env>;

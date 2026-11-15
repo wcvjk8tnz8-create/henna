@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS mail_message (
   spam_score REAL NOT NULL DEFAULT 0,
   spam_reason TEXT NOT NULL DEFAULT '',
   spam_source TEXT NOT NULL DEFAULT '',
+  external_id TEXT,
   size       INTEGER NOT NULL DEFAULT 0,
   created_at INTEGER NOT NULL
 );
@@ -117,6 +118,21 @@ CREATE TABLE IF NOT EXISTS setting (
   key   TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS inbound_log (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  source     TEXT NOT NULL DEFAULT '',
+  event_id   TEXT NOT NULL DEFAULT '',
+  from_addr  TEXT NOT NULL DEFAULT '',
+  to_addr    TEXT NOT NULL DEFAULT '',
+  subject    TEXT NOT NULL DEFAULT '',
+  owner_id   INTEGER,
+  message_id INTEGER,
+  status     TEXT NOT NULL DEFAULT '',
+  reason     TEXT NOT NULL DEFAULT '',
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_inbound_time ON inbound_log(created_at DESC);
 `;
 
 /** 拆分执行：D1 的 prepare().all() 不接受多语句，必须手工切分 */
@@ -133,6 +149,7 @@ export function splitSql(sql: string): string[] {
  * 这样 /api/init 反复跑都安全。
  */
 const COLUMN_MIGRATIONS = [
+  'ALTER TABLE mail_message ADD COLUMN external_id TEXT',
   'ALTER TABLE mail_message ADD COLUMN is_spam INTEGER NOT NULL DEFAULT 0',
   'ALTER TABLE mail_message ADD COLUMN spam_score REAL NOT NULL DEFAULT 0',
   "ALTER TABLE mail_message ADD COLUMN spam_reason TEXT NOT NULL DEFAULT ''",
@@ -148,6 +165,17 @@ export async function ensureSchema(db: D1Database): Promise<void> {
       await db.prepare(stmt).run();
     } catch {
       /* 列已存在 */
+    }
+  }
+  // 依赖新增列的索引必须等加列跑完再建，且老库里可能已存在 —— 逐条容错
+  for (const stmt of [
+    'CREATE INDEX IF NOT EXISTS idx_msg_external ON mail_message(external_id)',
+    'CREATE INDEX IF NOT EXISTS idx_inbound_time ON inbound_log(created_at DESC)',
+  ]) {
+    try {
+      await db.prepare(stmt).run();
+    } catch {
+      /* 索引已存在或表还没建 */
     }
   }
 }

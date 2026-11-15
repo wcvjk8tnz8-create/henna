@@ -12,8 +12,9 @@ import Providers from './Providers.vue';
 import Rules from './Rules.vue';
 import Admin from './Admin.vue';
 import SystemSettings from './SystemSettings.vue';
+import InboundSettings from './InboundSettings.vue';
 
-type Tab = 'providers' | 'rules' | 'admin' | 'system';
+type Tab = 'providers' | 'rules' | 'admin' | 'system' | 'inbound';
 
 const route = useRoute();
 const router = useRouter();
@@ -23,11 +24,12 @@ const tabs: { key: Tab; label: string; hint: string }[] = [
   { key: 'rules', label: '分发规则', hint: '收信后推 Telegram / Webhook / 转发' },
   { key: 'admin', label: '用户与统计', hint: '用户列表、配额、站点数据' },
   { key: 'system', label: '系统设置', hint: '主题、登录背景、OAuth2、对象存储' },
+  { key: 'inbound', label: '收信通道', hint: '域名不在 Cloudflare 也能收信：发信商 webhook / 自建接口' },
 ];
 
 function tabFromQuery(): Tab {
   const t = String(route.query.tab ?? '');
-  return (['providers', 'rules', 'admin', 'system'] as const).includes(t as Tab) ? (t as Tab) : 'providers';
+  return (['providers', 'rules', 'admin', 'system', 'inbound'] as const).includes(t as Tab) ? (t as Tab) : 'providers';
 }
 
 const tab = ref<Tab>(tabFromQuery());
@@ -71,7 +73,8 @@ const current = computed(() => tabs.find((t) => t.key === tab.value) ?? tabs[0])
       <Providers v-if="tab === 'providers'" />
       <Rules v-else-if="tab === 'rules'" />
       <Admin v-else-if="tab === 'admin'" />
-      <SystemSettings v-else />
+      <SystemSettings v-else-if="tab === 'system'" />
+      <InboundSettings v-else />
     </div>
   </div>
 </template>

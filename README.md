@@ -264,6 +264,35 @@ export interface MailProvider {
 顺带修了个越权：`/message/:id/read` 和 `/:id/star` 之前**完全没校验归属**，
 任何人都能改别人的已读和星标状态。现在统一走 `assertOwn`。
 
+### 📥 收信通道：域名不在 Cloudflare 也能收信
+
+Cloudflare Email Routing 要求域名托管在 CF。如果域名在别处，就把下面任意一条
+webhook 地址填到发信商，或者用自己的服务器 POST 到「自建接口」——
+信照样进收件箱，AI 垃圾侦测、附件、分发规则全部照常生效。
+
+| 来源 | 端点 | 配置要点 |
+|---|---|---|
+| **Resend** | `/api/inbound/resend` | Webhooks 订阅 `email.received`；事件只给元数据，系统自动回拉 `GET /emails/receiving/:id` 拿正文、`/attachments` 拿附件 |
+| **Postmark** | `/api/inbound/postmark` | MX 指向 `inbound.postmarkapp.com`，Server → Inbound 填 webhook URL |
+| **SendGrid** | `/api/inbound/sendgrid` | 收信子域 MX 10 → `mx.sendgrid.net`，Settings → Inbound Parse；建议勾 raw MIME |
+| **Mailgun** | `/api/inbound/mailgun` | Routes → `forward()` 到该 URL；表单 / JSON 两种格式都吃 |
+| **自建接口** | `/api/inbound/generic` | POST 一段 JSON 即可，给脚本 / n8n / 自己的服务器用 |
+
+**两条路径共用同一套入库逻辑**：解析成统一的 `InboundMail` 后，归属匹配、AI 分类、
+附件落库、规则分发、全局推送全部复用 `ingestInbound`，不是另写一套。
+
+几个容易踩的坑，都处理了：
+
+- **认证**：URL 带 `?key=`（默认复用 `JWT_SECRET`，开箱即用），也支持 `X-Inbound-Key` / `Bearer`；设置页可生成独立密钥单独轮换
+- **幂等**：Postmark 最多重试 10 次、SendGrid 重试 3 天。用 `message_id` / `external_id` 去重，重复投递返回 `duplicate` 且不重复入库
+- **永远回 200**：地址无人认领也回 200，否则会引发重试风暴；日志里记一笔便于排查
+- **子地址**：`box+news@domain` 会自动去掉 `+tag` 再匹配归属（Postmark 的 MailboxHash 同理）
+- **Resend 没配 API Key**：仍会入库，只存元数据并写明原因；留空时自动复用已配置的 Resend 发信服务商 Key
+- **webhook 挂了**：可开「每小时定时拉取」，或点「立即拉取」走 `GET /emails/receiving` 补信
+
+设置页在 **站点管理 → 收信通道**，含各家 DNS / 后台配置指引、curl 示例、
+端到端测试（正常邮件 / 垃圾邮件各一封）和最近 30 条入站日志。
+
 ### 🛡 垃圾邮件侦测（Workers AI）
 
 收信链路上的旁路分类，**AI 挂了不影响收信**。
@@ -471,6 +500,7 @@ cd web    && npm i && npm run dev        # http://localhost:5173 (代理 /api �
 | `14-all-inbox` | 全部收件箱（管理员专用，按用户筛选） |
 | `15-mail-hub` / `16-invites` | 邮箱汇总页（地址 / 日志 / 分析）、邀请码独立页 |
 | `17-spam-box` / `18-ai-settings` | 垃圾箱、Workers AI 侦测设置 |
+| `23-inbound-config` / `24-inbound-log` | 收信通道设置、入站日志 |
 | `20-landing-hero` / `21-landing-why` / `22-landing-cta` | 落地页（首屏 / 為什麼寫 / CTA） |
 
 预览图由 `tools/shot-mock.mjs` 用 mock 数据渲染，**非线上实例**。

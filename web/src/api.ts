@@ -206,6 +206,39 @@ export interface AiTestResult {
   availability: AiStatus;
 }
 
+export interface InboundSourceConfig {
+  key: string;
+  label: string;
+  mx: string;
+  where: string;
+  note: string;
+  url: string;
+}
+export interface InboundConfig {
+  origin: string;
+  secret: string;
+  customSecret: string;
+  usingJwtFallback: boolean;
+  resendKeyConfigured: boolean;
+  resendKeySource: string;
+  pollEnabled: boolean;
+  cloudflareRouting: boolean;
+  sources: InboundSourceConfig[];
+}
+export interface InboundLogItem {
+  id: number;
+  source: string;
+  event_id: string;
+  from_addr: string;
+  to_addr: string;
+  subject: string;
+  owner_id: number | null;
+  message_id: number | null;
+  status: string;
+  reason: string;
+  created_at: number;
+}
+
 export type SettingsMap = Record<string, string>;
 
 export interface StorageStatus {

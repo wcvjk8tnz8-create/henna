@@ -18,6 +18,7 @@ export const SECRET_KEYS = [
   'telegram_bot_token',
   's3_secret_key',
   'ai_api_token',
+  'inbound_resend_api_key',
 ] as const;
 
 /** 公开字段：未登录也能读（登录页要用） */
@@ -123,6 +124,13 @@ export const DEFAULT_SETTINGS: Record<string, string> = {
   spam_skip_push: 'true',
   spam_hide_inbox: 'true',
   spam_max_chars: '1200',
+  // ── 收信通道（域名未托管到 Cloudflare 时）
+  // 空 = 用 JWT_SECRET 当 webhook 密钥（开箱即用，不用额外配置）
+  inbound_secret: '',
+  // 空 = 自动从已配置的 Resend 发信服务商取 API Key
+  inbound_resend_api_key: '',
+  // 定时从 Resend 拉取已接收邮件（webhook 挂掉时的兜底）
+  inbound_poll_enabled: 'false',
 };
 
 export type SettingsMap = Record<string, string>;
