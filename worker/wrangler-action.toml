@@ -53,4 +53,4 @@ DEFAULT_QUOTA = "50"
 PROVIDER_STRATEGY = "priority"
 
 [triggers]
-crons = ["0 16 * * *", "0 * * * *"]
+crons = ["0 16 * * *"]

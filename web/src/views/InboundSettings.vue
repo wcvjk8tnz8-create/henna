@@ -218,7 +218,7 @@ onMounted(load);
           </div>
           <label class="mb-2 flex items-center gap-2 text-xs text-ink-600">
             <input v-model="s.inbound_poll_enabled" type="checkbox" true-value="true" false-value="false" class="accent-henna-500" />
-            每小时定时拉取
+            定时拉取（每日）
           </label>
           <button class="btn-primary" @click="saveInbound">保存</button>
         </div>
