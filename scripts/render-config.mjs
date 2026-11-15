@@ -9,6 +9,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { normalizeDomains } from './normalize-domains.mjs';
 
 const file = path.resolve('worker/wrangler.jsonc');
 const original = fs.readFileSync(file, 'utf8');
@@ -54,35 +55,21 @@ try {
   process.exit(1);
 }
 
-/** 把任意写法的域名输入规整成 string[] */
-function parseDomains(raw) {
-  if (!raw) return null;
-  let s = String(raw).trim();
-  if (!s || s === '[]' || s === '""' || s === "''" || s === 'null') return null;
-  try {
-    const arr = JSON.parse(s);
-    if (Array.isArray(arr)) {
-      const out = arr.map(String).map((x) => x.trim()).filter(Boolean);
-      if (out.length) return out;
-    }
-  } catch {
-    /* 非 JSON，走宽松解析 */
-  }
-  const out = s
-    .replace(/^\[|\]$/g, '')
-    .replace(/["']/g, '')
-    .split(/[\s,;]+/)
-    .map((x) => x.trim())
-    .filter(Boolean);
-  return out.length ? out : null;
+// 域名解析统一交给 normalize-domains.mjs，避免两套规则不一致
+const parsedDomains = process.env.MAIL_DOMAINS
+  ? normalizeDomains(process.env.MAIL_DOMAINS)
+  : null;
+if (parsedDomains && !parsedDomains.ok) {
+  console.error('✗', parsedDomains.error);
+  process.exit(1);
 }
+const DOMAIN_LIST = parsedDomains?.ok ? parsedDomains.domains : null;
 
 const D1_ID = process.env.D1_ID;
 const KV_ID = process.env.KV_ID;
 const R2 = process.env.R2_BUCKET;
 const JWT = process.env.JWT_SECRET;
 const ADMIN = process.env.ADMIN_EMAIL;
-const DOMAIN_LIST = parseDomains(process.env.MAIL_DOMAINS);
 
 // ── 资源绑定
 if (D1_ID && Array.isArray(cfg.d1_databases) && cfg.d1_databases[0]) {
@@ -95,7 +82,8 @@ if (R2 && Array.isArray(cfg.r2_buckets) && cfg.r2_buckets[0]) {
   cfg.r2_buckets[0].bucket_name = R2;
 }
 
-// ── 运行时变量（MAIL_DOMAINS 存 JSON 数组字符串，由 worker 自行 JSON.parse）
+// ── 运行时变量（wrangler.jsonc 里存数组字符串，由 worker 自行解析；
+//    用户侧填的是逗号串，已在 normalize-domains.mjs 归一化）
 cfg.vars = cfg.vars || {};
 if (JWT) cfg.vars.JWT_SECRET = JWT;
 if (ADMIN) cfg.vars.ADMIN_EMAIL = ADMIN;

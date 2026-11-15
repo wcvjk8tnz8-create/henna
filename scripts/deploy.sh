@@ -6,13 +6,13 @@
 #   export CLOUDFLARE_API_TOKEN=xxxx
 #   export CLOUDFLARE_ACCOUNT_ID=xxxx
 #   export ADMIN=admin@your.domain
-#   export DOMAIN='["your.domain"]'
+#   export DOMAIN='r0.us.ci,v-1.top'      # 多个域名用逗号隔开
 #   export JWT_SECRET=web3hennamail
 #   ./scripts/deploy.sh
 #
 # 幂等：资源已存在则复用，可反复执行。
 # D1 / KV / R2 全部自动创建；填了 ID 就用你指定的那个。
-# 依赖：node、npm、jq、curl
+# 依赖：node、npm、curl
 # ───────────────────────────────────────────────────────────────
 set -euo pipefail
 
@@ -32,7 +32,6 @@ cd "$ROOT"
 export NAME CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID ADMIN DOMAIN
 export D1_DATABASE_ID KV_NAMESPACE_ID R2_BUCKET_NAME CUSTOM_DOMAIN
 
-command -v jq >/dev/null || { echo "✗ 需要 jq（apt install jq / brew install jq）" >&2; exit 1; }
 [[ -z "$CLOUDFLARE_API_TOKEN" || -z "$CLOUDFLARE_ACCOUNT_ID" ]] && {
   echo "✗ 需要 CLOUDFLARE_API_TOKEN 与 CLOUDFLARE_ACCOUNT_ID" >&2; exit 1; }
 
@@ -46,8 +45,8 @@ echo "▶ [1/7] 校验环境变量"
 [[ -z "$ADMIN" ]] && { echo "✗ ADMIN 不能为空" >&2; exit 1; }
 grep -q '[?%#/\\|&]' <<< "$JWT_SECRET" && {
   echo "✗ JWT_SECRET 含非法字符（? % # / \ | &）" >&2; exit 1; }
-jq -e 'type == "array"' <<< "$DOMAIN" >/dev/null || {
-  echo "✗ DOMAIN 必须是 JSON 数组，例如 [\"your.domain\"]" >&2; exit 1; }
+# 域名直接填逗号串即可；旧 JSON 数组格式也兼容
+DOMAIN_JSON=$(node scripts/normalize-domains.mjs "$DOMAIN") || exit 1
 echo "   ✓ 校验通过"
 
 echo "▶ [2/7] 构建前端"
@@ -75,7 +74,8 @@ sed -i.bak \
   -e "s|\${D1_DATABASE_ID}|${D1_ID}|g" \
   -e "s|\${KV_NAMESPACE_ID}|${KV_ID}|g" \
   "$C" && rm -f "$C.bak"
-sed -i.bak "s|\"\${DOMAIN}\"|${DOMAIN}|g" "$C" && rm -f "$C.bak"
+# 归一化结果写成 TOML 原生数组（值只含安全字符，sed 不会注入）
+sed -i.bak "s|\"\${DOMAIN}\"|${DOMAIN_JSON}|g" "$C" && rm -f "$C.bak"
 if [[ -z "$R2_BUCKET" ]]; then
   sed -i.bak '/\[\[r2_buckets\]\]/,/^$/d' "$C" && rm -f "$C.bak"
   echo "   ! R2 未启用，附件功能降级"

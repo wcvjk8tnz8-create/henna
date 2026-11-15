@@ -4,9 +4,12 @@
 # 本地开发请用 wrangler.jsonc（那份是真实配置，不含占位符）。
 #
 # 为什么用 TOML 模板而不是往 JSON 里塞值：
-# JSON 里 MAIL_DOMAINS 存的是「数组的字符串形式」，值内带转义引号 \" ，
-# 用正则改写极易写出非法 JSON。TOML 里 DOMAIN 直接写
-# ["a.com","b.com"] 就是原生数组，且改的是占位符而非字符串内容，天然安全。
+# JSON 里 MAIL_DOMAINS 存的是「数组的字符串形式」，值内带转义引号，
+# 用正则改写极易写出非法 JSON。TOML 里写 ["a.com","b.net"] 就是原生数组，
+# 且改的是占位符而非字符串内容，天然安全。
+#
+# 填配置的人不用管这些：DOMAIN 直接填 a.com,b.net 就行，
+# scripts/normalize-domains.mjs 会归一化成下面的数组字面量。
 
 name = "${NAME}"
 main = "src/index.ts"
@@ -46,7 +49,7 @@ binding = "AI"
 APP_NAME = "Henna Mail"
 JWT_SECRET = "${JWT_SECRET}"
 ADMIN_EMAIL = "${ADMIN}"
-# 注意：这里的引号会被 sed 连同占位符一起替换成裸数组
+# 注意：这里的引号会被 sed 连同占位符一起替换成 TOML 原生数组
 MAIL_DOMAINS = "${DOMAIN}"
 ALLOW_REGISTER = "true"
 DEFAULT_QUOTA = "50"

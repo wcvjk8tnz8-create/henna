@@ -162,7 +162,7 @@ export interface MailProvider {
 | `CLOUDFLARE_API_TOKEN` | Cloudflare API 令牌 | ✓ |
 | `CLOUDFLARE_ACCOUNT_ID` | 账户 ID | ✓ |
 | `ADMIN` | 管理员邮箱，如 `admin@your.domain` | ✓ |
-| `DOMAIN` | **必须是 JSON 数组**，如 `["your.domain"]` | ✓ |
+| `DOMAIN` | **直接填域名**，多个用逗号隔开，如 `r0.us.ci,v-1.top` | ✓ |
 | `JWT_SECRET` | 会话签名密钥，**随便打一个别人猜不到的字符串即可**（见下方说明） | ✓ |
 | `NAME` | Worker 名称，默认 `henna-mail` | |
 | `CUSTOM_DOMAIN` | 自定义域名，如 `mail.your.domain` | |
@@ -446,8 +446,12 @@ R2 免费额度需要绑卡，所以它是**唯一可选**的资源。不绑也�
 > R2 免费额度需绑卡，账户没开通时会自动跳过并删掉配置段——收信、发信、规则分发照常工作，
 > 只是附件只保存文件名等元信息、不保存内容。
 
-> `DOMAIN` 这一项最容易填错。必须是 **JSON 数组格式** `["your.domain"]`，
-> 写成 `your.domain` 或 `[your.domain]` 都会在部署前的校验步骤直接报错退出——这是刻意的，早失败比部署完才发现问题好。
+> **`DOMAIN` 不用 JSON，直接填域名就行**：`r0.us.ci,v-1.top`。
+> 单个域名写 `r0.us.ci` 也可以，空格、分号、顿号都能当分隔符；大小写会自动统一。
+> 以前配的 `["r0.us.ci","v-1.top"]` 这种 JSON 数组格式**继续兼容**，不用回去改。
+> 连 `["r0.us.ci","v-1".top]` 这种引号点错位的笔误也能自动救回来。
+> 归一化在部署前的校验步骤完成（`scripts/normalize-domains.mjs`），
+> 真有非法字符会当场报错并告诉你哪里不对——早失败比部署完才发现问题好。
 
 ### 方式二 · 一键 CLI 脚本（本地 / 服务器）
 
@@ -456,7 +460,7 @@ export CLOUDFLARE_API_TOKEN=xxx
 export CLOUDFLARE_ACCOUNT_ID=xxx
 export JWT_SECRET=web3hennamail      # 随便打，别让别人知道就行
 export ADMIN=admin@your.domain
-export DOMAIN='["your.domain"]'      # 必须是 JSON 数组
+export DOMAIN='r0.us.ci,v-1.top'     # 多个域名用逗号隔开
 ./scripts/deploy.sh            # 校验 → 构建 → 建资源 → 部署 → 初始化
 ```
 
